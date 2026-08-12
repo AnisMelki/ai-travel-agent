@@ -10,3 +10,12 @@ wheels/
 .venv
 .env
 .env
+# Tests
+tests/
+
+# Pytest cache
+.pytest_cache/
+
+# Python cache
+__pycache__/
+*.pyc

@@ -1,16 +1,20 @@
-from app.agent.bootstrap import bootstrap_agent
-from app.agent.flight_agent import create_flight_agent
+from app.agent.bootstrap import BootstrapApplication
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.router.flight_router import router as flight_router
+from app.core.config import configure_logging
+import logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    model = bootstrap_agent()
-    app.state.flight_agent = create_flight_agent(model)
+    configure_logging()
+    logging.getLogger(__name__).info("Starting up application")
+    bootstrap_app = BootstrapApplication()
+    await bootstrap_app.startup(app)
     yield
-    print("Shutting down application")
+    logging.getLogger(__name__).info("Shutting down application")
+    await bootstrap_app.shutdown()
 
 
 app = FastAPI(title="Flight API", version="1.0.0", lifespan=lifespan)

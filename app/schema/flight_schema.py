@@ -1,12 +1,17 @@
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
+from typing_extensions import Annotated, Literal
+
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
+
+from app.schema.airline_reviews_schema import AirlineReviewResponse, AirlineSummary
 
 
 class Airport(BaseModel):
     name: str = Field(..., description="The name of the airport")
     id: str = Field(..., description="The unique identifier of the airport")
-    time: datetime = Field(
-        ..., description="The time of flight departure or arrival in ISO-8601 format"
+    time: datetime | None = Field(
+        None, description="The time of flight departure or arrival in ISO-8601 format"
     )
 
 
@@ -46,9 +51,54 @@ class FlightSearchResult(BaseModel):
     type: str = Field(
         ..., description="The type of the flight its round trip or one way"
     )
+    currency: str | None = Field(
+        None, description="The currency of the price of the flight"
+    )
+
+
+@dataclass(frozen=True)
+class FlightSearchOutcome:
+    flights: list[FlightSearchResult]
+    airline_names: set[str]
 
 
 class FlightSearchResponse(BaseModel):
     results: list[FlightSearchResult] = Field(
         ..., description="The list of flight search results"
+    )
+    airline_reviews: dict[str, AirlineSummary] = Field(
+        ...,
+        description="The airline reviews for the airlines found in the search results",
+    )
+
+
+class DecisionFlights(BaseModel):
+    selected_indexes: list[int] = Field(
+        max_length=2,
+        default_factory=list,
+        description="indexes of the selected flights from FlightSearchResponse.results. ordered from the best to second best. empty only when no flights were found in the search results.",
+    )
+
+    reasoning: str = Field(
+        ...,
+        description="Explanation of why these flights were selected based on price, duration, layovers, and airline reviews.",
+    )
+
+    @field_validator("selected_indexes")
+    @classmethod
+    def validate_selected_indexes(cls, indexes: list[int]) -> list:
+        if len(indexes) != len(set(indexes)):
+            raise ValueError("selected_indexes must contain unique values")
+        return indexes
+
+
+class ResponseFlights(BaseModel):
+    best_flights_selected: list[FlightSearchResult] = Field(
+        ...,
+        description="The best flight search results based on the agent's decision",
+        default_factory=list,
+    )
+    reasoning: str = Field(
+        ...,
+        description="Explanation of why these flights were selected based on price, duration, layovers, and airline reviews.",
     )
