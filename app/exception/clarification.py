@@ -5,7 +5,6 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.exception.flight_exceptions import TranslatedError
-from app.schema.state_conversation import FlightConversationState
 
 
 class FlightErrorCode(StrEnum):

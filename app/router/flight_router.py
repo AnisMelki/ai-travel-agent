@@ -9,7 +9,6 @@ from app.service.conversation_service.conversation_service import (
 from app.schema.chat_schema import ChatRequest, FlightResultResponse
 
 from app.schema.chat_schema import ClarificationResponse
-from app.schema.chat_schema import FlightSearchRequest
 import logging
 from app.service.conversation_service.extraction_request import (
     FlightRequestExtractionService,

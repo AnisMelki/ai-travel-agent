@@ -1,10 +1,9 @@
 from dataclasses import dataclass
-from typing_extensions import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
-from app.schema.airline_reviews_schema import AirlineReviewResponse, AirlineSummary
+from app.schema.airline_reviews_schema import AirlineSummary
 
 
 class Airport(BaseModel):

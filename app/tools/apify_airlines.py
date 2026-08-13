@@ -150,6 +150,7 @@ class AirlineReviewService:
         except TimeoutError as excep:
             raise AirlineReviewProviderTimeoutError(
                 "Failed to call Apify actor for airline reviews.",
+                provider="apify",
                 details={
                     "Actor ID": self.ACTOR_ID,
                 },
@@ -157,6 +158,7 @@ class AirlineReviewService:
         except Exception as excep:
             raise AirlineReviewProviderError(
                 "Failed to call Apify actor for airline reviews.",
+                provider="apify",
                 details={"Actor ID": self.ACTOR_ID, "error": type(excep).__name__},
             ) from excep
 
@@ -167,6 +169,7 @@ class AirlineReviewService:
         except TimeoutError as excep:
             raise AirlineReviewProviderTimeoutError(
                 "Failed to read dataset from Apify.",
+                provider="apify",
                 details={
                     "Dataset ID": dataset_id,
                 },
@@ -174,5 +177,6 @@ class AirlineReviewService:
         except Exception as excep:
             raise AirlineReviewProviderResponseError(
                 "Failed to read dataset from Apify.",
+                provider="apify",
                 details={"Dataset ID": dataset_id, "error": type(excep).__name__},
             ) from excep

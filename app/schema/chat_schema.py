@@ -1,9 +1,8 @@
 from typing_extensions import Annotated
 
-from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
+from pydantic import BaseModel, Field, field_validator, ValidationInfo
 from datetime import date
 from typing import Literal
-from typing import Any, Self
 from dataclasses import dataclass
 from app.schema.flight_schema import ResponseFlights, FlightSearchResponse
 from app.exception.clarification import ClarificationResponse

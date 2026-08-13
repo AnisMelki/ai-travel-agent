@@ -10,7 +10,6 @@ from app.repositories.conversation_repository import (
 )
 from app.schema.chat_schema import (
     ChatRequest,
-    FlightChatResponse,
     FlightResultResponse,
     FlightSearchRequest,
 )
