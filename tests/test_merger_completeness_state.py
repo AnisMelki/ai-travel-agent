@@ -12,11 +12,11 @@ from app.service.conversation_service.merger_completeness_state import (
 
 
 def _make_state(**overrides) -> FlightConversationState:
-    defaults = dict(
-        conversation_id="conv-1",
-        created_at=datetime(2020, 1, 1),
-        updated_at=datetime(2020, 1, 1),
-    )
+    defaults = {
+        "conversation_id": "conv-1",
+        "created_at": datetime(2020, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2020, 1, 1, tzinfo=UTC),
+    }
     defaults.update(overrides)
     return FlightConversationState(**defaults)
 

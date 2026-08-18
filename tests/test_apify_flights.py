@@ -96,13 +96,13 @@ def test_default_dataset_id_accepts_apify_run_object_shape():
 
 
 def test_flight_search_response_accepts_airline_summary_contract():
+    from app.schema.airline_reviews_schema import AirlineSummary
     from app.schema.flight_schema import (
         Airport,
         FlightDetails,
         FlightSearchResponse,
         FlightSearchResult,
     )
-    from app.schema.airline_reviews_schema import AirlineSummary
 
     result = FlightSearchResult(
         flights=[
@@ -543,9 +543,9 @@ def test_to_datetime_handles_none_passthrough_and_non_str_and_empty(value, expec
 
 
 def test_to_datetime_returns_same_instance_for_datetime_value():
-    from datetime import datetime
+    from datetime import UTC, datetime
 
-    value = datetime(2026, 8, 10, 8, 0)
+    value = datetime(2026, 8, 10, 8, 0, tzinfo=UTC)
 
     assert FlightSearchService._to_datetime(value) is value
 

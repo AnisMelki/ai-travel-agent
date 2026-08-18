@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -18,11 +18,11 @@ from app.service.conversation_service.conversation_service import (
 
 
 def _make_state(**overrides) -> FlightConversationState:
-    defaults = dict(
-        conversation_id="conv-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
+    defaults = {
+        "conversation_id": "conv-1",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    }
     defaults.update(overrides)
     return FlightConversationState(**defaults)
 
@@ -142,7 +142,7 @@ def test_returns_clarification_when_airport_not_found():
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
     state = _make_state()
 
-    response, updated_state = asyncio.run(
+    response, _updated_state = asyncio.run(
         service.process_chat_request(chat_request, state)
     )
 
@@ -163,7 +163,7 @@ def test_returns_clarification_when_airport_ambiguous():
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
     state = _make_state()
 
-    response, updated_state = asyncio.run(
+    response, _updated_state = asyncio.run(
         service.process_chat_request(chat_request, state)
     )
 
@@ -235,7 +235,7 @@ def test_flight_search_request_preserves_dates_from_state():
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
     state = _make_state()
 
-    response, updated_state = asyncio.run(
+    _response, updated_state = asyncio.run(
         service.process_chat_request(chat_request, state)
     )
 

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -19,11 +19,11 @@ from app.service.conversation_service.extraction_request import (
 
 
 def _make_state(**overrides) -> FlightConversationState:
-    defaults = dict(
-        conversation_id="conv-1",
-        created_at=datetime(2020, 1, 1),
-        updated_at=datetime(2020, 1, 1),
-    )
+    defaults = {
+        "conversation_id": "conv-1",
+        "created_at": datetime(2020, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2020, 1, 1, tzinfo=UTC),
+    }
     defaults.update(overrides)
     return FlightConversationState(**defaults)
 
@@ -103,11 +103,10 @@ def test_extract_flight_request_raises_output_error_when_final_output_is_none():
     with patch(
         "app.service.conversation_service.extraction_request.Runner.run",
         new=AsyncMock(return_value=SimpleNamespace(final_output=None)),
-    ):
-        with pytest.raises(FlightExtractionOutputError) as exc_info:
-            asyncio.run(
-                service.extract_flight_request(_make_chat_request(), _make_state())
-            )
+    ), pytest.raises(FlightExtractionOutputError) as exc_info:
+        asyncio.run(
+            service.extract_flight_request(_make_chat_request(), _make_state())
+        )
 
     assert exc_info.value.message == "No flight request could be extracted."
 
@@ -118,11 +117,10 @@ def test_extract_flight_request_reraises_user_correctable_error_from_runner():
     with patch(
         "app.service.conversation_service.extraction_request.Runner.run",
         new=AsyncMock(side_effect=AirportNotFoundError("Atlantis", field="origin")),
-    ):
-        with pytest.raises(AirportNotFoundError) as exc_info:
-            asyncio.run(
-                service.extract_flight_request(_make_chat_request(), _make_state())
-            )
+    ), pytest.raises(AirportNotFoundError) as exc_info:
+        asyncio.run(
+            service.extract_flight_request(_make_chat_request(), _make_state())
+        )
 
     assert exc_info.value.location == "Atlantis"
 
@@ -133,8 +131,7 @@ def test_extract_flight_request_reraises_unexpected_exception_from_runner():
     with patch(
         "app.service.conversation_service.extraction_request.Runner.run",
         new=AsyncMock(side_effect=RuntimeError("agent run failed")),
-    ):
-        with pytest.raises(RuntimeError, match="agent run failed"):
-            asyncio.run(
-                service.extract_flight_request(_make_chat_request(), _make_state())
-            )
+    ), pytest.raises(RuntimeError, match="agent run failed"):
+        asyncio.run(
+            service.extract_flight_request(_make_chat_request(), _make_state())
+        )

@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,11 +13,11 @@ from app.schema.state_conversation import FlightConversationState
 
 
 def _make_state(**overrides) -> FlightConversationState:
-    defaults = dict(
-        conversation_id="conv-1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
+    defaults = {
+        "conversation_id": "conv-1",
+        "created_at": datetime.now(UTC),
+        "updated_at": datetime.now(UTC),
+    }
     defaults.update(overrides)
     return FlightConversationState(**defaults)
 

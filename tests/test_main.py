@@ -84,9 +84,8 @@ def test_lifespan_propagates_startup_exception(monkeypatch):
         main_module, "BootstrapApplication", FailingBootstrapApplication
     )
 
-    with pytest.raises(RuntimeError, match="boom"):
-        with TestClient(main_module.app):
-            pass
+    with pytest.raises(RuntimeError, match="boom"), TestClient(main_module.app):
+        pass
 
 
 def test_lifespan_propagates_shutdown_exception(monkeypatch):
@@ -103,6 +102,7 @@ def test_lifespan_propagates_shutdown_exception(monkeypatch):
         main_module, "BootstrapApplication", FailingShutdownBootstrapApplication
     )
 
-    with pytest.raises(RuntimeError, match="shutdown failed"):
-        with TestClient(main_module.app):
-            pass
+    with pytest.raises(RuntimeError, match="shutdown failed"), TestClient(
+        main_module.app
+    ):
+        pass
