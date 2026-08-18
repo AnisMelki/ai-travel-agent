@@ -34,4 +34,12 @@ jobs:
         run: uv run mypy app
 
       - name: Run tests with coverage
+        env:
+          OPENROUTER_API_KEY: test-key
+          OPENROUTER_BASE_URL: https://example.com
+          OPENROUTER_MODEL: test-model
+          LLM_TIME_OUT: "30"
+          LLM_MAX_RETRY: "3"
+          APIFY_API_TOKEN: test-token
+          REDIS_URL: redis://localhost:6379/0
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80

@@ -10,8 +10,7 @@ wheels/
 .venv
 .env
 .env
-# Tests
-tests/
+
 
 # Pytest cache
 .pytest_cache/
