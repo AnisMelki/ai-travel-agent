@@ -1,8 +1,8 @@
-from app.core.config import get_settings
-from app.tools.apify_flights import FlightSearchService
-from app.tools.apify_airlines import AirlineReviewService
-
 from apify_client import ApifyClientAsync
+
+from app.core.config import get_settings
+from app.tools.apify_airlines import AirlineReviewService
+from app.tools.apify_flights import FlightSearchService
 
 settings = get_settings()
 apify_client = ApifyClientAsync(settings.APIFY_API_TOKEN)

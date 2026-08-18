@@ -1,14 +1,17 @@
 from __future__ import annotations
+
 import logging
 import re
 from typing import Any, Protocol, cast
+
 from apify_client import ApifyClientAsync
-from app.schema.airline_reviews_schema import AirlineReview, AirlineSummary
+
 from app.exception.flight_exceptions import (
     AirlineReviewProviderError,
-    AirlineReviewProviderTimeoutError,
     AirlineReviewProviderResponseError,
+    AirlineReviewProviderTimeoutError,
 )
+from app.schema.airline_reviews_schema import AirlineReview, AirlineSummary
 
 logger = logging.getLogger(__name__)
 

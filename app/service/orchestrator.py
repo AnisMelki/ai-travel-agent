@@ -1,21 +1,21 @@
 import logging
-from datetime import datetime, timezone
 import uuid
+from datetime import UTC, datetime
 
-from app.service.conversation_service.conversation_service import (
-    FlightConversationService,
-)
+from app.exception.clarification import ClarificationResponse
 from app.repositories.conversation_repository import (
     ConversationRepository,
 )
 from app.schema.chat_schema import (
     ChatRequest,
+    ErrorResponse,
     FlightResultResponse,
     FlightSearchRequest,
-    ErrorResponse,
 )
 from app.schema.state_conversation import FlightConversationState
-from app.exception.clarification import ClarificationResponse
+from app.service.conversation_service.conversation_service import (
+    FlightConversationService,
+)
 from app.service.flight_agent_service import FlightSelectionService
 
 logger = logging.getLogger(__name__)
@@ -51,8 +51,8 @@ class FlightOrchestrator:
             )
             state = FlightConversationState(
                 conversation_id=conversation_id,
-                created_at=datetime.now(timezone.utc),
-                updated_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
             )
         response, updated_state = await self.conversation_service.process_chat_request(
             chat_request, state

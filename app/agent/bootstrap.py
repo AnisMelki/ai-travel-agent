@@ -1,13 +1,14 @@
 import logging
-from openai import AsyncOpenAI
+
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from redis.asyncio import Redis
 from apify_client import ApifyClientAsync
-from app.agent.flight_agent import create_flight_agent
-from app.core.config import get_settings
-from redis.exceptions import RedisError
 from fastapi import FastAPI
-from app.agent.flight_agent import create_flights_agent_selection
+from openai import AsyncOpenAI
+from redis.asyncio import Redis
+from redis.exceptions import RedisError
+
+from app.agent.flight_agent import create_flight_agent, create_flights_agent_selection
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 

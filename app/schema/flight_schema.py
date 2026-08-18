@@ -1,7 +1,7 @@
 from dataclasses import dataclass
+from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
-from datetime import datetime
 
 from app.schema.airline_reviews_schema import AirlineSummary
 

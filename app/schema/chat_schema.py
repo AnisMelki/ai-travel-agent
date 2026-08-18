@@ -1,11 +1,11 @@
-from typing_extensions import Annotated
-
-from pydantic import BaseModel, Field, field_validator, ValidationInfo
-from datetime import date
-from typing import Literal
 from dataclasses import dataclass
-from app.schema.flight_schema import ResponseFlights, FlightSearchResponse
+from datetime import UTC, date, datetime
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
 from app.exception.clarification import ClarificationResponse
+from app.schema.flight_schema import FlightSearchResponse, ResponseFlights
 
 
 class ChatRequest(BaseModel):
@@ -73,7 +73,7 @@ class FlightSearchRequest(BaseModel):
     @field_validator("departure_date")
     @classmethod
     def validate_date(cls, value: date) -> date:
-        if value is not None and value < date.today():
+        if value is not None and value < datetime.now(UTC).date():
             raise ValueError("Departure date cannot be in the past")
         return value
 

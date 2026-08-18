@@ -1,13 +1,15 @@
 import logging
+from datetime import date
+
 from agents import Agent, Runner
 from pydantic import BaseModel
-from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
-from app.schema.chat_schema import ChatRequest
-from datetime import date
+
 from app.exception.flight_exceptions import (
     FlightExtractionOutputError,
     UserCorrectableFlightError,
 )
+from app.schema.chat_schema import ChatRequest
+from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
 
 
 class FlightExtractionContext(BaseModel):

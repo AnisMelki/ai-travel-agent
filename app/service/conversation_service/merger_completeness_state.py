@@ -1,6 +1,7 @@
-from datetime import datetime
-from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
+from datetime import UTC, datetime
 from typing import Literal
+
+from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
 
 
 class FlightStateMerger:
@@ -24,7 +25,7 @@ class FlightStateMerger:
                     None if "destination" in updates else current_state.destination_code
                 ),
                 "version": current_state.version + 1,
-                "updated_at": datetime.now(),
+                "updated_at": datetime.now(UTC),
             }
         )
 

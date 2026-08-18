@@ -1,8 +1,8 @@
-from typing import Literal, TypeAlias
-
-from pydantic import BaseModel, ConfigDict, field_validator, Field
 from datetime import date, datetime
 from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ConversationStatus(StrEnum):
@@ -15,13 +15,13 @@ class ConversationStatus(StrEnum):
     FAILED = "failed"
 
 
-ClarificationReason: TypeAlias = Literal[
+type ClarificationReason = Literal[
     "missing_field",
     "airport_not_found",
     "ambiguous_airport",
 ]
 
-FlightFieldName: TypeAlias = Literal[
+type FlightFieldName = Literal[
     "origin",
     "destination",
     "departure_date",

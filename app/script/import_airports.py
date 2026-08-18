@@ -17,11 +17,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert  # noqa: E402
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from app.database.base import Base  # noqa: E402
-from app.database.session import SessionLocal, engine  # noqa: E402
-from app.model.airport import AirportModel  # noqa: E402
+from app.database.base import Base
+from app.database.session import SessionLocal, engine
+from app.model.airport import AirportModel
 
 CSV_PATH = PROJECT_ROOT / "app" / "data" / "world_airports.csv"
 BATCH_SIZE = 500

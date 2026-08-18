@@ -1,7 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 import logging
 import sys
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pythonjsonlogger.json import JsonFormatter
 
 

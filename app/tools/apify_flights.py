@@ -1,21 +1,23 @@
+import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
+
 from apify_client import ApifyClientAsync
+
+from app.exception.flight_exceptions import (
+    EmptyFlightSearch,
+    FlightProviderError,
+    FlightProviderResponseError,
+    FlightProviderTimeoutError,
+)
 from app.schema.flight_schema import (
     Airport,
     FlightDetails,
-    FlightSearchResult,
     FlightSearchOutcome,
+    FlightSearchResult,
     Layover,
 )
-from app.exception.flight_exceptions import (
-    FlightProviderError,
-    FlightProviderTimeoutError,
-    FlightProviderResponseError,
-    EmptyFlightSearch,
-)
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +354,7 @@ class FlightSearchService:
             return None
 
         try:
-            return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+            return datetime.fromisoformat(normalized)
         except ValueError:
             pass
 
@@ -370,7 +372,7 @@ class FlightSearchService:
                 return datetime.strptime(
                     normalized,
                     date_format,
-                )
+                ).replace(tzinfo=UTC)
             except ValueError:
                 continue
 

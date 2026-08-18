@@ -1,39 +1,40 @@
+import logging
 from collections.abc import Callable
+from typing import ClassVar
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import SessionLocal
+from app.exception.clarification import ClarificationBuilder
+from app.exception.flight_exceptions import (
+    AirportNotFoundError,
+    AmbiguityAirportError,
+    FlightErrorTranslator,
+    TranslatedError,
+    UserCorrectableFlightError,
+)
 from app.repositories.airport_repository import AirportRepository
-from app.service.conversation_service.merger_completeness_state import (
-    FlightStateMerger,
-    FlightRequestCompletenessChecker,
-)
-from app.service.conversation_service.extraction_request import (
-    FlightRequestExtractionService,
-)
-from app.service.conversation_service.airport_resolve_service import (
-    AirportResolutionService,
-)
-from app.schema.state_conversation import (
-    FlightConversationState,
-    ConversationStatus,
-    PendingClarification,
-    ClarificationReason,
-)
 from app.schema.chat_schema import (
     ChatRequest,
     ClarificationResponse,
     FlightSearchRequest,
 )
-from app.exception.flight_exceptions import (
-    AirportNotFoundError,
-    AmbiguityAirportError,
-    TranslatedError,
-    UserCorrectableFlightError,
-    FlightErrorTranslator,
+from app.schema.state_conversation import (
+    ClarificationReason,
+    ConversationStatus,
+    FlightConversationState,
+    PendingClarification,
 )
-from app.exception.clarification import ClarificationBuilder
-
-import logging
+from app.service.conversation_service.airport_resolve_service import (
+    AirportResolutionService,
+)
+from app.service.conversation_service.extraction_request import (
+    FlightRequestExtractionService,
+)
+from app.service.conversation_service.merger_completeness_state import (
+    FlightRequestCompletenessChecker,
+    FlightStateMerger,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def _default_airport_resolution_service_factory(
 
 
 class FlightConversationService:
-    _CLARIFICATION_REASON_BY_ERROR_CODE: dict[str, ClarificationReason] = {
+    _CLARIFICATION_REASON_BY_ERROR_CODE: ClassVar[dict[str, ClarificationReason]] = {
         AirportNotFoundError.code: "airport_not_found",
         AmbiguityAirportError.code: "ambiguous_airport",
     }

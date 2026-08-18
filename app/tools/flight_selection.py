@@ -1,10 +1,9 @@
-from app.schema.chat_schema import FlightSearchRequest
-from app.schema.flight_schema import FlightSearchResponse
-
-from app.tools.apify_flights import FlightSearchService
-from app.tools.apify_airlines import AirlineReviewService
 import logging
-from app.schema.chat_schema import ResolvedRequest
+
+from app.schema.chat_schema import FlightSearchRequest, ResolvedRequest
+from app.schema.flight_schema import FlightSearchResponse
+from app.tools.apify_airlines import AirlineReviewService
+from app.tools.apify_flights import FlightSearchService
 
 logger = logging.getLogger(__name__)
 

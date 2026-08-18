@@ -1,9 +1,8 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from enum import StrEnum
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, Field
-from collections.abc import Sequence
 
 from app.exception.flight_exceptions import TranslatedError
 
@@ -30,7 +29,7 @@ class ClarificationResponse(BaseModel):
 
 
 class ClarificationBuilder:
-    _MISSING_FIELD_MESSAGES: dict[str, str] = {
+    _MISSING_FIELD_MESSAGES: ClassVar[dict[str, str]] = {
         "origin": ("De quelle ville ou de quel aéroport souhaitez-vous partir ?"),
         "destination": ("Quelle est votre ville ou votre aéroport de destination ?"),
         "departure_date": ("À quelle date souhaitez-vous partir ?"),

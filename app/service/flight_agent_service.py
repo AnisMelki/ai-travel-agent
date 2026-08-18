@@ -1,17 +1,21 @@
 import logging
+
 from agents import Agent, Runner
-from app.exception.flight_exceptions import UserCorrectableFlightError
+
+from app.context.flight_context import FlightAgentContext
+from app.exception.clarification import ClarificationBuilder
+from app.exception.flight_exceptions import (
+    FlightErrorTranslator,
+    UserCorrectableFlightError,
+)
+from app.hooks.flighs_run_hook import FlightRunHooks
 from app.schema.chat_schema import FlightChatResponse, FlightSearchRequest
 from app.schema.flight_schema import (
     DecisionFlights,
     FlightSearchResponse,
     ResponseFlights,
 )
-from app.hooks.flighs_run_hook import FlightRunHooks
 from app.tools.flight_selection import FlightSearchOrchestrator
-from app.exception.flight_exceptions import FlightErrorTranslator
-from app.exception.clarification import ClarificationBuilder
-from app.context.flight_context import FlightAgentContext
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +57,8 @@ class FlightSelectionService:
                 hooks=FlightRunHooks(),
             )
             return result.final_output
-        except Exception as e:
-            logger.exception(
-                "Unexpected error during flight agent selection: %s", str(e)
-            )
+        except Exception:
+            logger.exception("Unexpected error during flight agent selection")
             raise
 
     @staticmethod

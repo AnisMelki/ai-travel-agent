@@ -1,8 +1,10 @@
-from agents import Agent, ModelSettings
 from pathlib import Path
+
+from agents import Agent, ModelSettings
 from jinja2 import Environment, FileSystemLoader
-from app.schema.state_conversation import FlightRequestPatch
+
 from app.schema.flight_schema import DecisionFlights
+from app.schema.state_conversation import FlightRequestPatch
 
 template_dir = Path(__file__).parent.parent / "template"
 

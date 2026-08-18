@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
+
 from pydantic import ValidationError
+
 from app.schema.state_conversation import FlightFieldName
 
 

@@ -1,5 +1,5 @@
-from app.repositories.airport_repository import AirportRepository
 from app.exception.flight_exceptions import AirportNotFoundError, AmbiguityAirportError
+from app.repositories.airport_repository import AirportRepository
 from app.schema.state_conversation import FlightFieldName
 
 

@@ -1,9 +1,11 @@
-from app.agent.bootstrap import BootstrapApplication
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from app.router.flight_router import router as flight_router
-from app.core.config import configure_logging
 import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from app.agent.bootstrap import BootstrapApplication
+from app.core.config import configure_logging
+from app.router.flight_router import router as flight_router
 
 
 @asynccontextmanager
