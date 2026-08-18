@@ -65,10 +65,10 @@ def get_flight_search_orchestrator(
 
 
 def get_flight_selection_service(
+    request: Request,
     flight_search_orchestrator: FlightSearchOrchestrator = Depends(
         get_flight_search_orchestrator
     ),
-    request: Request = None,
 ) -> FlightSelectionService:
     return FlightSelectionService(
         flight_search_orchestrator, request.app.state.selection_agent

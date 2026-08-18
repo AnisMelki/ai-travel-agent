@@ -12,6 +12,7 @@ from app.schema.chat_schema import (
     ChatRequest,
     FlightResultResponse,
     FlightSearchRequest,
+    ErrorResponse,
 )
 from app.schema.state_conversation import FlightConversationState
 from app.exception.clarification import ClarificationResponse
@@ -40,7 +41,7 @@ class FlightOrchestrator:
 
     async def handle_flight_request(
         self, chat_request: ChatRequest
-    ) -> FlightSearchRequest | ClarificationResponse:
+    ) -> tuple[FlightSearchRequest | ClarificationResponse, str]:
         conversation_id = get_or_create_conversation_id(chat_request)
         logger.info(f"Handling flight request for conversation_id: {conversation_id}")
         state = await self.conversation_repository.get(conversation_id)
@@ -63,6 +64,12 @@ class FlightOrchestrator:
         self, search_request: FlightSearchRequest, conversation_id: str
     ) -> FlightResultResponse:
         selection = await self.selection_flights_service.search_flights(search_request)
+        if isinstance(selection, ClarificationResponse):
+            return selection
+
+        if isinstance(selection, ErrorResponse):
+            return selection
+
         decision = await self.selection_flights_service.run_agent_selection(selection)
         result = self.selection_flights_service.build_decision_flights_response(
             decision, selection

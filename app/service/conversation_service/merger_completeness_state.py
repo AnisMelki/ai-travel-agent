@@ -1,5 +1,6 @@
 from datetime import datetime
 from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
+from typing import Literal
 
 
 class FlightStateMerger:
@@ -32,8 +33,16 @@ class FlightStateMerger:
         return value.strip().lower()
 
 
+FlightFieldName = Literal[
+    "origin",
+    "destination",
+    "departure_date",
+    "return_date",
+]
+
+
 class FlightRequestCompletenessChecker:
-    REQUIRED_FIELDS: tuple[str, ...] = (
+    REQUIRED_FIELDS: tuple[FlightFieldName, ...] = (
         "origin",
         "destination",
         "departure_date",
@@ -42,7 +51,7 @@ class FlightRequestCompletenessChecker:
     def missing_fields(
         self,
         state: FlightConversationState,
-    ) -> list[str]:
+    ) -> list[FlightFieldName]:
         return [
             field_name
             for field_name in self.REQUIRED_FIELDS

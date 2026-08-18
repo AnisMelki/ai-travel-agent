@@ -17,6 +17,7 @@ from app.schema.state_conversation import (
     FlightConversationState,
     ConversationStatus,
     PendingClarification,
+    ClarificationReason,
 )
 from app.schema.chat_schema import (
     ChatRequest,
@@ -44,7 +45,7 @@ def _default_airport_resolution_service_factory(
 
 
 class FlightConversationService:
-    _CLARIFICATION_REASON_BY_ERROR_CODE: dict[str, str] = {
+    _CLARIFICATION_REASON_BY_ERROR_CODE: dict[str, ClarificationReason] = {
         AirportNotFoundError.code: "airport_not_found",
         AmbiguityAirportError.code: "ambiguous_airport",
     }
@@ -103,20 +104,20 @@ class FlightConversationService:
 
         # 3. Still missing normal request fields.
         if not self.completeness_checker.is_complete(updated_state):
-            missing_fields = self.completeness_checker.missing_fields(updated_state)
+            missing_field = self.completeness_checker.missing_fields(updated_state)
 
             updated_state = updated_state.model_copy(
                 update={
                     "status": ConversationStatus.COLLECTING,
                     "pending_clarification": PendingClarification(
                         reason="missing_field",
-                        field_name=missing_fields[0],
+                        field_name=missing_field[0],
                     ),
                 }
             )
 
             clarification_response = self._clarification_builder.from_missing_fields(
-                missing_fields
+                missing_field
             )
 
             return clarification_response, updated_state
@@ -140,6 +141,11 @@ class FlightConversationService:
         FlightConversationState,
     ]:
         pending = state.pending_clarification
+        if pending is None:
+            return await self.process_chat_request(
+                chat_request,
+                state,
+            )
 
         if pending.reason == "ambiguous_airport":
             return await self._handle_ambiguous_airport_clarification(
@@ -177,6 +183,11 @@ class FlightConversationService:
         pending = state.pending_clarification
 
         selected_code = chat_request.message.strip().upper()
+        if pending is None:
+            return await self.process_chat_request(
+                chat_request,
+                state,
+            )
 
         if selected_code not in pending.allowed_airport_codes:
             clarification_response = (
@@ -189,23 +200,28 @@ class FlightConversationService:
             # Keep pending clarification unchanged.
             return clarification_response, state
 
-        updates = {
-            "pending_clarification": None,
-            "status": ConversationStatus.RESOLVING_AIRPORTS,
-        }
-
         if pending.field_name == "origin":
-            updates["origin_code"] = selected_code
+            updated_state = state.model_copy(
+                update={
+                    "pending_clarification": None,
+                    "status": ConversationStatus.RESOLVING_AIRPORTS,
+                    "origin_code": selected_code,
+                }
+            )
 
         elif pending.field_name == "destination":
-            updates["destination_code"] = selected_code
+            updated_state = state.model_copy(
+                update={
+                    "pending_clarification": None,
+                    "status": ConversationStatus.RESOLVING_AIRPORTS,
+                    "destination_code": selected_code,
+                }
+            )
 
         else:
             raise ValueError(
                 "ambiguous_airport clarification must target origin or destination"
             )
-
-        updated_state = state.model_copy(update=updates)
 
         # Resume airport resolution without losing the user's selection.
         return await self._resolve_or_clarify_airports(updated_state)
@@ -298,17 +314,26 @@ class FlightConversationService:
 
             # Important: do not re-resolve a code already chosen by user.
             origin_code = state.origin_code
+            destination_code = state.destination_code
+            origin = state.origin
+            destination = state.destination
+            departure_date = state.departure_date
+            if origin is None:
+                raise ValueError("origin must be set before airport resolution")
+
+            if destination is None:
+                raise ValueError("destination must be set before airport resolution")
+            if departure_date is None:
+                raise ValueError("departure_date must be set before airport resolution")
 
             if origin_code is None:
                 origin_code = await airport_resolution_service.search_city(
-                    state.origin, field="origin"
+                    origin, field="origin"
                 )
-
-            destination_code = state.destination_code
 
             if destination_code is None:
                 destination_code = await airport_resolution_service.search_city(
-                    state.destination, field="destination"
+                    destination, field="destination"
                 )
 
             updated_state = state.model_copy(
@@ -319,9 +344,9 @@ class FlightConversationService:
             )
 
         flight_search_request = FlightSearchRequest(
-            origin=updated_state.origin_code,
-            destination=updated_state.destination_code,
-            departure_date=updated_state.departure_date,
+            origin=origin_code,
+            destination=destination_code,
+            departure_date=departure_date,
             return_date=updated_state.return_date,
         )
 

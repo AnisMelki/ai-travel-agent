@@ -93,8 +93,7 @@ class DecisionFlights(BaseModel):
 
 class ResponseFlights(BaseModel):
     best_flights_selected: list[FlightSearchResult] = Field(
-        ...,
-        description="The best flight search results based on the agent's decision",
+        description="list of flight search results selected by the agent. ordered from the best to second best. empty only when no flights were found in the search results.",
         default_factory=list,
     )
     reasoning: str = Field(

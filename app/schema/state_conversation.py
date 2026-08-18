@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, field_validator, Field
 from datetime import date, datetime
@@ -15,21 +15,26 @@ class ConversationStatus(StrEnum):
     FAILED = "failed"
 
 
+ClarificationReason: TypeAlias = Literal[
+    "missing_field",
+    "airport_not_found",
+    "ambiguous_airport",
+]
+
+FlightFieldName: TypeAlias = Literal[
+    "origin",
+    "destination",
+    "departure_date",
+    "return_date",
+]
+
+
 class PendingClarification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    reason: Literal[
-        "missing_field",
-        "airport_not_found",
-        "ambiguous_airport",
-    ]
+    reason: ClarificationReason
 
-    field_name: Literal[
-        "origin",
-        "destination",
-        "departure_date",
-        "return_date",
-    ]
+    field_name: FlightFieldName
 
     allowed_airport_codes: list[str] = Field(default_factory=list)
 

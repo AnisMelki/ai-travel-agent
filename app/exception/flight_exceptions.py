@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 from typing import Any
 from pydantic import ValidationError
+from app.schema.state_conversation import FlightFieldName
 
 
 @dataclass(frozen=True, slots=True)
 class TranslatedError:
     code: str
     category: str
-    field: str | None
+    field: FlightFieldName | None
     message: str
     details: dict[str, Any] | None = None
     retryable: bool = False
@@ -122,7 +123,7 @@ class AirportNotFoundError(UserCorrectableFlightError):
         self,
         location: str,
         *,
-        field: str | None = None,
+        field: FlightFieldName | None = None,
     ) -> None:
         self.location = location
         self.field = field
@@ -144,7 +145,7 @@ class AmbiguityAirportError(UserCorrectableFlightError):
         location: str,
         airport_codes: list[str],
         *,
-        field: str | None = None,
+        field: FlightFieldName | None = None,
     ) -> None:
         self.location = location
         self.airport_codes = airport_codes
@@ -346,12 +347,14 @@ class FlightErrorTranslator:
                 else "Une information obligatoire est manquante."
             ),
         }
-
-        return messages.get(
-            error_type,
-            "Certaines informations de la demande sont invalides. "
-            "Pouvez-vous les vérifier ?",
-        )
+        if error_type is None:
+            return "Invalid Flights Request"
+        else:
+            return messages.get(
+                error_type,
+                "Certaines informations de la demande sont invalides. "
+                "Pouvez-vous les vérifier ?",
+            )
 
 
 def normalize_validation_errors(

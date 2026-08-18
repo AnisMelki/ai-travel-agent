@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 class FlightSearchOrchestrator:
     def __init__(
         self,
-        flight_service: FlightSearchService | None = None,
-        airline_review_service: AirlineReviewService | None = None,
+        flight_service: FlightSearchService,
+        airline_review_service: AirlineReviewService,
     ) -> None:
         self.flight_service = flight_service
         self.airline_review_service = airline_review_service

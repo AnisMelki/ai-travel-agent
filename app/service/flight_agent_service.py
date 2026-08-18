@@ -11,6 +11,7 @@ from app.hooks.flighs_run_hook import FlightRunHooks
 from app.tools.flight_selection import FlightSearchOrchestrator
 from app.exception.flight_exceptions import FlightErrorTranslator
 from app.exception.clarification import ClarificationBuilder
+from app.context.flight_context import FlightAgentContext
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class FlightSelectionService:
     def __init__(
         self,
         flight_search_orchestrator: FlightSearchOrchestrator,
-        agent_selection: Agent[None],
+        agent_selection: Agent[FlightAgentContext],
     ) -> None:
         self.flight_search_orchestrator = flight_search_orchestrator
         self.agent_selection = agent_selection

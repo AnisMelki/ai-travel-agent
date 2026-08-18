@@ -44,7 +44,9 @@ def read_airports(csv_path: Path) -> list[dict[str, object]]:
         ]
 
 
-async def import_airports(csv_path: Path = CSV_PATH, batch_size: int = BATCH_SIZE) -> int:
+async def import_airports(
+    csv_path: Path = CSV_PATH, batch_size: int = BATCH_SIZE
+) -> int:
     airports = read_airports(csv_path)
     if not airports:
         return 0

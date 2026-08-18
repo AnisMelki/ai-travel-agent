@@ -58,18 +58,15 @@ class FlightSearchService:
         if not items:
             raise FlightProviderResponseError(
                 "Apify flight search returned no dataset items",
+                provider="Apify",
                 details={"actor_id": self.ACTOR_ID},
             )
         all_flights = self._extract_flight_results(items)
         if not all_flights:
             raise EmptyFlightSearch(
-                "Flight search completed but no flights were found",
-                details={
-                    "origin": origin,
-                    "destination": destination,
-                    "departure_date": departure_date,
-                    "return_date": return_date,
-                },
+                origin=origin,
+                destination=destination,
+                departure_date=departure_date,
             )
         airline_names = self._extract_airline_names(all_flights)
         logger.info(
@@ -82,9 +79,7 @@ class FlightSearchService:
         self,
         run_input: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        run = await self._call_actor(run_input)
-
-        dataset_id = self._default_dataset_id(run)
+        dataset_id = await self._call_actor(run_input)
 
         raw_items = await self._read_dataset(dataset_id)
 
@@ -188,6 +183,7 @@ class FlightSearchService:
             flights=flights,
             layovers=layovers,
             total_duration=total_duration,
+            currency=cls._to_str(value.get("currency"), default="USD"),
             price=price,
             type=cls._to_str(value.get("type")),
         )
@@ -264,6 +260,7 @@ class FlightSearchService:
         if not isinstance(dataset_id, str) or not dataset_id:
             raise FlightProviderResponseError(
                 "Apify flight search run did not return a valid dataset ID",
+                provider="Apify",
                 details={"response_type": type(run).__name__},
             )
 
@@ -394,16 +391,25 @@ class FlightSearchService:
 
         return airline_names
 
-    async def _call_actor(self, run_input: dict[str, Any]) -> dict[str, Any]:
+    async def _call_actor(self, run_input: dict[str, Any]) -> str:
         try:
-            return await self._client.actor(self.ACTOR_ID).call(
+            run = await self._client.actor(self.ACTOR_ID).call(
                 run_input=run_input,
                 logger=None,
             )
+            if run is None:
+                raise FlightProviderError(
+                    "Apify flight search returned no run information",
+                    provider="Apify",
+                    details={"actor_id": self.ACTOR_ID},
+                )
+            return self._default_dataset_id(run)
 
         except TimeoutError as exc:
             raise FlightProviderTimeoutError(
-                "Apify flight search timed out", details={"actor_id": self.ACTOR_ID}
+                "Apify flight search timed out",
+                provider="Apify",
+                details={"actor_id": self.ACTOR_ID},
             ) from exc
         except Exception as exc:
             logger.exception(
@@ -417,9 +423,11 @@ class FlightSearchService:
             )
             raise FlightProviderError(
                 "Apify flight search failed",
+                provider="Apify",
                 details={
                     "actor_id": self.ACTOR_ID,
                     "exception_type": type(exc).__name__,
+                    "exception_message": str(exc),
                 },
             ) from exc
 
@@ -430,11 +438,14 @@ class FlightSearchService:
             ]
         except TimeoutError as exc:
             raise FlightProviderTimeoutError(
-                "Apify dataset read timed out", details={"dataset_id": dataset_id}
+                "Apify dataset read timed out",
+                provider="Apify",
+                details={"dataset_id": dataset_id},
             ) from exc
         except Exception as exc:
             raise FlightProviderError(
                 "Apify dataset read failed",
+                provider="Apify",
                 details={
                     "dataset_id": dataset_id,
                     "exception_type": type(exc).__name__,

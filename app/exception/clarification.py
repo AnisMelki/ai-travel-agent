@@ -3,6 +3,7 @@ from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from collections.abc import Sequence
 
 from app.exception.flight_exceptions import TranslatedError
 
@@ -51,7 +52,7 @@ class ClarificationBuilder:
 
     def from_missing_fields(
         self,
-        missing_fields: list[str],
+        missing_fields: Sequence[str],
     ) -> ClarificationResponse:
         if not missing_fields:
             raise ValueError("missing_fields must contain at least one field.")
@@ -65,7 +66,7 @@ class ClarificationBuilder:
             ),
             field=field,
             code=FlightErrorCode.MISSING_REQUIRED_FIELD,
-            missing_fields=missing_fields,
+            missing_fields=list(missing_fields),
         )
 
     def from_error(

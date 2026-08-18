@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
 import re
-from typing import Any
+from typing import Any, Protocol, cast
 from apify_client import ApifyClientAsync
 from app.schema.airline_reviews_schema import AirlineReview, AirlineSummary
 from app.exception.flight_exceptions import (
@@ -11,6 +11,10 @@ from app.exception.flight_exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class RunLike(Protocol):
+    default_dataset_id: str
 
 
 class AirlineReviewService:
@@ -134,18 +138,28 @@ class AirlineReviewService:
         return None
 
     @staticmethod
-    def _default_dataset_id(run: object) -> str:
+    def _default_dataset_id(run: RunLike | dict[str, Any]) -> str:
         if isinstance(run, dict):
             return run["defaultDatasetId"]
 
         return run.default_dataset_id
 
-    async def _call_actor(self, run_input: dict) -> list[dict[str, Any]]:
+    async def _call_actor(self, run_input: dict) -> RunLike:
         try:
-            return await self._client.actor(self.ACTOR_ID).call(
+            run = await self._client.actor(self.ACTOR_ID).call(
                 run_input=run_input,
                 logger=None,
             )
+            if run is None:
+                raise AirlineReviewProviderError(
+                    "Apify actor returned no run.",
+                    provider="apify",
+                    details={
+                        "Actor ID": self.ACTOR_ID,
+                    },
+                )
+
+            return cast(RunLike, run)
 
         except TimeoutError as excep:
             raise AirlineReviewProviderTimeoutError(
