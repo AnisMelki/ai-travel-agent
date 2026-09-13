@@ -5,6 +5,7 @@ import re
 from typing import Any, Protocol, cast
 
 from apify_client import ApifyClientAsync
+from langfuse import get_client
 
 from app.exception.flight_exceptions import (
     AirlineReviewProviderError,
@@ -35,34 +36,49 @@ class AirlineReviewService:
             "Starting airline review scraping for airlines: %s",
             airline_names,
         )
+        langfuse = get_client()
+        with langfuse.start_as_current_observation(
+            as_type="tool",
+            name="apify_get_airline_summaries",
+            input={"airline_names": list(airline_names), "max_reviews": max_reviews},
+        ) as span:
+            summaries: dict[str, AirlineSummary] = {}
 
-        summaries: dict[str, AirlineSummary] = {}
+            for airline_name in sorted(airline_names):
+                logger.info("Scraping reviews for airline: %s", airline_name)
 
-        for airline_name in sorted(airline_names):
-            logger.info("Scraping reviews for airline: %s", airline_name)
+                try:
+                    reviews = await self._fetch_reviews(
+                        airline_name=airline_name,
+                        max_reviews=max_reviews,
+                    )
+                except AirlineReviewProviderError:
+                    logger.exception(
+                        "Failed to fetch reviews for airline: %s",
+                        airline_name,
+                    )
+                    continue
 
-            try:
-                reviews = await self._fetch_reviews(
-                    airline_name=airline_name,
-                    max_reviews=max_reviews,
+                if not reviews:
+                    logger.warning(
+                        "No reviews found for airline: %s",
+                        airline_name,
+                    )
+                    continue
+
+                summaries[airline_name] = self._build_summary(reviews)
+
+            span.update(
+                output=(
+                    {
+                        k: v.model_dump_json()
+                        if hasattr(v, "model_dump_json")
+                        else str(v)
+                        for k, v in summaries.items()
+                    }
                 )
-            except AirlineReviewProviderError:
-                logger.exception(
-                    "Failed to fetch reviews for airline: %s",
-                    airline_name,
-                )
-                continue
-
-            if not reviews:
-                logger.warning(
-                    "No reviews found for airline: %s",
-                    airline_name,
-                )
-                continue
-
-            summaries[airline_name] = self._build_summary(reviews)
-
-        return summaries
+            )
+            return summaries
 
     async def _fetch_reviews(
         self,

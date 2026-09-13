@@ -17,7 +17,7 @@ from app.service.conversation_service.conversation_service import (
     FlightConversationService,
 )
 from app.service.flight_agent_service import FlightSelectionService
-from app.service.orchestrator import FlightOrchestrator, get_or_create_conversation_id
+from app.service.orchestrator import FlightOrchestrator
 
 
 def _make_state(**overrides) -> FlightConversationState:
@@ -30,16 +30,8 @@ def _make_state(**overrides) -> FlightConversationState:
     return FlightConversationState(**defaults)
 
 
-def _make_chat_request(conversation_id="conv-1", message="Hello") -> ChatRequest:
-    return ChatRequest(conversation_id=conversation_id, message=message)
-
-
-class _FakeChatRequest:
-    """Duck-typed stand-in for the falsy-conversation_id branch; the real
-    ChatRequest enforces min_length=1 and can never hold an empty id."""
-
-    def __init__(self, conversation_id):
-        self.conversation_id = conversation_id
+def _make_chat_request(message="Hello") -> ChatRequest:
+    return ChatRequest(message=message)
 
 
 def _make_repository(
@@ -103,26 +95,6 @@ def _make_flight_search_response() -> FlightSearchResponse:
 
 
 # ---------------------------------------------------------------------------
-# get_or_create_conversation_id
-# ---------------------------------------------------------------------------
-
-
-def test_get_or_create_conversation_id_returns_existing_id_when_present():
-    assert get_or_create_conversation_id(_make_chat_request("conv-99")) == "conv-99"
-
-
-def test_get_or_create_conversation_id_generates_uuid_when_empty():
-    generated = get_or_create_conversation_id(_FakeChatRequest(conversation_id=""))
-    assert generated
-    assert generated != ""
-
-
-def test_get_or_create_conversation_id_generates_uuid_when_none():
-    generated = get_or_create_conversation_id(_FakeChatRequest(conversation_id=None))
-    assert generated
-
-
-# ---------------------------------------------------------------------------
 # new vs. existing state
 # ---------------------------------------------------------------------------
 
@@ -134,12 +106,11 @@ def test_creates_new_state_with_defaults_when_none_found():
     service = _make_service(process_result=(response, updated_state))
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
-    result, conversation_id = asyncio.run(
-        orchestrator.handle_flight_request(_make_chat_request(conversation_id="conv-1"))
+    result = asyncio.run(
+        orchestrator.handle_flight_request(_make_chat_request(), "conv-1")
     )
 
     assert result is response
-    assert conversation_id == "conv-1"
     repository.get.assert_awaited_once_with("conv-1")
 
     passed_state = service.process_chat_request.await_args.args[1]
@@ -157,36 +128,13 @@ def test_reuses_existing_state_object_when_found():
     service = _make_service(process_result=(response, updated_state))
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
-    result, conversation_id = asyncio.run(
-        orchestrator.handle_flight_request(_make_chat_request(conversation_id="conv-2"))
+    result = asyncio.run(
+        orchestrator.handle_flight_request(_make_chat_request(), "conv-2")
     )
 
     assert result is response
-    assert conversation_id == "conv-2"
     passed_state = service.process_chat_request.await_args.args[1]
     assert passed_state is existing_state
-
-
-def test_generates_and_reuses_a_fresh_conversation_id_end_to_end():
-    repository = _make_repository(get_return=None)
-    response = ClarificationResponse(message="ok")
-    captured = {}
-
-    async def fake_process(chat_request, state):
-        captured["state"] = state
-        return response, state
-
-    service = _make_service()
-    service.process_chat_request.side_effect = fake_process
-    orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
-
-    asyncio.run(
-        orchestrator.handle_flight_request(_FakeChatRequest(conversation_id=""))
-    )
-
-    generated_id = captured["state"].conversation_id
-    assert generated_id
-    repository.get.assert_awaited_once_with(generated_id)
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +151,7 @@ def test_saves_the_exact_updated_state_returned_by_service():
     service = _make_service(process_result=(response, updated_state))
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
-    asyncio.run(orchestrator.handle_flight_request(_make_chat_request()))
+    asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
 
     repository.save.assert_awaited_once_with(updated_state)
 
@@ -219,7 +167,7 @@ def test_repository_get_failure_propagates_and_skips_service_and_save():
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
     with pytest.raises(RuntimeError, match="redis down"):
-        asyncio.run(orchestrator.handle_flight_request(_make_chat_request()))
+        asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
 
     service.process_chat_request.assert_not_awaited()
     repository.save.assert_not_awaited()
@@ -231,7 +179,7 @@ def test_conversation_service_failure_propagates_and_skips_save():
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
     with pytest.raises(ValueError, match="bad extraction"):
-        asyncio.run(orchestrator.handle_flight_request(_make_chat_request()))
+        asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
 
     repository.get.assert_awaited_once()
     repository.save.assert_not_awaited()
@@ -247,7 +195,7 @@ def test_repository_save_failure_propagates_after_service_already_ran():
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
     with pytest.raises(RuntimeError, match="save failed"):
-        asyncio.run(orchestrator.handle_flight_request(_make_chat_request()))
+        asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
 
     service.process_chat_request.assert_awaited_once()
     repository.save.assert_awaited_once_with(updated_state)
@@ -274,7 +222,7 @@ def test_calls_happen_in_get_then_process_then_save_order():
     service.process_chat_request.side_effect = fake_process
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
 
-    asyncio.run(orchestrator.handle_flight_request(_make_chat_request()))
+    asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
 
     assert call_order == ["get", "process", "save"]
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, TypeVar
 
 from agents import Agent, RunContextWrapper, RunHooks
 from agents.items import ModelResponse, TResponseInputItem
@@ -14,7 +14,30 @@ from app.context.flight_context import FlightAgentContext
 logger = logging.getLogger(__name__)
 
 
-class FlightRunHooks(RunHooks[FlightAgentContext]):
+TContext = TypeVar("TContext")
+
+
+class UsageRunHooks[TContext](RunHooks[TContext]):
+    def __init__(self) -> None:
+        self.requests = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.total_tokens = 0
+
+    async def on_llm_end(
+        self,
+        context: RunContextWrapper[TContext],
+        agent: Agent[TContext],
+        response: ModelResponse,
+    ) -> None:
+        usage = response.usage
+
+        self.input_tokens += usage.input_tokens
+        self.output_tokens += usage.output_tokens
+        self.total_tokens += usage.total_tokens
+
+
+class FlightRunHooks(UsageRunHooks[FlightAgentContext]):
     """
     Production lifecycle hooks for the complete FlightAgent run.
 
@@ -24,6 +47,7 @@ class FlightRunHooks(RunHooks[FlightAgentContext]):
     """
 
     def __init__(self) -> None:
+        super().__init__()
         self._run_started_at: float | None = None
         self._llm_started_at: dict[str, float] = {}
         self._tool_started_at: dict[str, list[float]] = {}
@@ -87,25 +111,6 @@ class FlightRunHooks(RunHooks[FlightAgentContext]):
                 "agent_name": agent.name,
                 "input_item_count": len(input_items),
                 "has_system_prompt": system_prompt is not None,
-            },
-        )
-
-    async def on_llm_end(
-        self,
-        context: RunContextWrapper[FlightAgentContext],
-        agent: Agent[FlightAgentContext],
-        response: ModelResponse,
-    ) -> None:
-        key = self._llm_key(agent)
-        started_at = self._llm_started_at.pop(key, None)
-
-        logger.info(
-            "LLM call completed",
-            extra={
-                "event": "llm_end",
-                "agent_name": agent.name,
-                "duration_ms": self._elapsed_ms(started_at),
-                "output_item_count": len(response.output),
             },
         )
 

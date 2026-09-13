@@ -147,10 +147,13 @@ def test_run_agent_selection_reraises_unexpected_errors():
     flight_search_response = _make_flight_search_response()
     service = _make_service()
 
-    with patch(
-        "app.service.flight_agent_service.Runner.run",
-        new=AsyncMock(side_effect=RuntimeError("agent run failed")),
-    ), pytest.raises(RuntimeError, match="agent run failed"):
+    with (
+        patch(
+            "app.service.flight_agent_service.Runner.run",
+            new=AsyncMock(side_effect=RuntimeError("agent run failed")),
+        ),
+        pytest.raises(RuntimeError, match="agent run failed"),
+    ):
         asyncio.run(service.run_agent_selection(flight_search_response))
 
 

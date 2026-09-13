@@ -1,5 +1,5 @@
 import logging
-
+from langfuse import get_client
 from app.schema.chat_schema import FlightSearchRequest, ResolvedRequest
 from app.schema.flight_schema import FlightSearchResponse
 from app.tools.apify_airlines import AirlineReviewService
@@ -22,54 +22,73 @@ class FlightSearchOrchestrator:
         search_request: FlightSearchRequest,
     ) -> FlightSearchResponse:
         logger.info("Validation and parsing of flight search request started.")
-
-        resolved_request = ResolvedRequest(
-            origin_code=search_request.origin,
-            destination_code=search_request.destination,
-            departure_date=search_request.departure_date.isoformat(),
-            return_date=(
-                search_request.return_date.isoformat()
-                if search_request.return_date
-                else None
-            ),
-        )
-
-        logger.info("Flight search request validated and resolved.")
-        logger.info(
-            "Searching flights from %s to %s on %s with return date %s",
-            resolved_request.origin_code,
-            resolved_request.destination_code,
-            resolved_request.departure_date,
-            resolved_request.return_date,
-        )
-
-        flight_search_outcome = await self.flight_service.search_flight(
-            origin=resolved_request.origin_code,
-            destination=resolved_request.destination_code,
-            departure_date=resolved_request.departure_date,
-            return_date=resolved_request.return_date,
-        )
-
-        logger.info("Flight search completed.")
-
-        all_flights = flight_search_outcome.flights
-        logger.info("Retrieved %d flights.", len(all_flights))
-        airline_reviews_summary = {}
-        if flight_search_outcome.airline_names:
-            logger.info(
-                "Fetching airline reviews for airlines: %s",
-                flight_search_outcome.airline_names,
+        langfuse = get_client()
+        with langfuse.start_as_current_observation(
+            as_type="chain",
+            name="search_flight",
+            input=search_request.model_dump_json(),
+        ) as span:
+            resolved_request = ResolvedRequest(
+                origin_code=search_request.origin,
+                destination_code=search_request.destination,
+                departure_date=search_request.departure_date.isoformat(),
+                return_date=(
+                    search_request.return_date.isoformat()
+                    if search_request.return_date
+                    else None
+                ),
             )
-            airline_reviews_summary = (
-                await self.airline_review_service.get_airline_summaries(
-                    airline_names=flight_search_outcome.airline_names, max_reviews=10
+
+            logger.info("Flight search request validated and resolved.")
+            logger.info(
+                "Searching flights from %s to %s on %s with return date %s",
+                resolved_request.origin_code,
+                resolved_request.destination_code,
+                resolved_request.departure_date,
+                resolved_request.return_date,
+            )
+
+            flight_search_outcome = await self.flight_service.search_flight(
+                origin=resolved_request.origin_code,
+                destination=resolved_request.destination_code,
+                departure_date=resolved_request.departure_date,
+                return_date=resolved_request.return_date,
+            )
+
+            logger.info("Flight search completed.")
+
+            all_flights = flight_search_outcome.flights
+            logger.info("Retrieved %d flights.", len(all_flights))
+            airline_reviews_summary = {}
+            if flight_search_outcome.airline_names:
+                logger.info(
+                    "Fetching airline reviews for airlines: %s",
+                    flight_search_outcome.airline_names,
+                )
+                airline_reviews_summary = (
+                    await self.airline_review_service.get_airline_summaries(
+                        airline_names=flight_search_outcome.airline_names,
+                        max_reviews=10,
+                    )
+                )
+                logger.info("Airline reviews fetched successfully.")
+            else:
+                logger.info(
+                    "No airlines found in the search results. Skipping review fetch."
+                )
+            span.update(
+                output=(
+                    FlightSearchResponse(
+                        results=all_flights, airline_reviews=airline_reviews_summary
+                    ).model_dump_json()
+                    if hasattr(FlightSearchResponse, "model_dump_json")
+                    else str(
+                        FlightSearchResponse(
+                            results=all_flights, airline_reviews=airline_reviews_summary
+                        )
+                    )
                 )
             )
-            logger.info("Airline reviews fetched successfully.")
-        else:
-            logger.info(
-                "No airlines found in the search results. Skipping review fetch."
+            return FlightSearchResponse(
+                results=all_flights, airline_reviews=airline_reviews_summary
             )
-        return FlightSearchResponse(
-            results=all_flights, airline_reviews=airline_reviews_summary
-        )

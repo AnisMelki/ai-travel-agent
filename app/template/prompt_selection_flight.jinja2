@@ -73,3 +73,8 @@ Important rules:
 * Never fabricate missing prices, reviews, ratings, durations, or layover information.
 * If a criterion is unavailable, ignore that criterion rather than guessing.
 * Return only data that conforms to `DecisionFlights`.
+* In your reasoning, identify flights by airline and flight number.
+* If the flight number is unavailable, use the airline and departure time.
+* Never refer to flights by array index or position, such as "Flight 0",
+  "Flight 1", "first flight", or "second flight".
+* Use only identifiers present in the input; never invent missing details.

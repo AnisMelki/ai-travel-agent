@@ -111,7 +111,9 @@ def test_returns_flight_search_request_when_airport_resolution_succeeds():
 
     service = _build_service(
         is_complete=True,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
@@ -136,7 +138,9 @@ def test_returns_clarification_when_airport_not_found():
 
     service = _build_service(
         is_complete=True,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
@@ -157,7 +161,9 @@ def test_returns_clarification_when_airport_ambiguous():
 
     service = _build_service(
         is_complete=True,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
@@ -229,7 +235,9 @@ def test_flight_search_request_preserves_dates_from_state():
     service = _build_service(
         is_complete=True,
         merged_state=merged_state,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
@@ -284,7 +292,9 @@ def test_unhandled_exception_from_airport_resolution_propagates():
 
     service = _build_service(
         is_complete=True,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
@@ -465,7 +475,9 @@ def test_pending_ambiguous_airport_valid_choice_normalizes_case_and_whitespace()
         state_merger=FakeStateMerger(_make_state()),
         completeness_checker=FakeCompletenessChecker(True),
         session_factory=lambda: FakeAsyncSession(),
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     pending = PendingClarification(
@@ -505,7 +517,9 @@ def test_pending_ambiguous_airport_valid_choice_for_destination_field():
         state_merger=FakeStateMerger(_make_state()),
         completeness_checker=FakeCompletenessChecker(True),
         session_factory=lambda: FakeAsyncSession(),
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
 
     pending = PendingClarification(
@@ -547,7 +561,9 @@ def test_ambiguous_airport_error_populates_pending_clarification_correctly():
 
     service = _build_service(
         is_complete=True,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
     state = _make_state()
@@ -575,7 +591,9 @@ def test_airport_not_found_error_populates_pending_clarification_correctly():
 
     service = _build_service(
         is_complete=True,
-        airport_resolution_service_factory=lambda session: FakeAirportResolutionService(),
+        airport_resolution_service_factory=lambda session: (
+            FakeAirportResolutionService()
+        ),
     )
     chat_request = ChatRequest(conversation_id="conv-1", message="hello")
     state = _make_state()

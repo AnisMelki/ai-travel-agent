@@ -2,7 +2,7 @@ import logging
 import re
 from datetime import UTC, datetime
 from typing import Any
-
+from langfuse import get_client
 from apify_client import ApifyClientAsync
 
 from app.exception.flight_exceptions import (
@@ -35,6 +35,7 @@ class FlightSearchService:
         departure_date: str,
         return_date: str | None = None,
     ) -> FlightSearchOutcome:
+        langfuse = get_client()
         run_input = {
             "arrival_id": destination,
             "departure_id": origin,
@@ -56,26 +57,44 @@ class FlightSearchService:
                 "has_return_date": return_date is not None,
             },
         )
-        items = await self._fetch_dataset_items(run_input)
-        if not items:
-            raise FlightProviderResponseError(
-                "Apify flight search returned no dataset items",
-                provider="Apify",
-                details={"actor_id": self.ACTOR_ID},
+        with langfuse.start_as_current_observation(
+            as_type="tool",
+            name="apify_search_flights",
+            input=run_input,
+        ) as span:
+            items = await self._fetch_dataset_items(run_input)
+            if not items:
+                raise FlightProviderResponseError(
+                    "Apify flight search returned no dataset items",
+                    provider="Apify",
+                    details={"actor_id": self.ACTOR_ID},
+                )
+            all_flights = self._extract_flight_results(items)
+            if not all_flights:
+                raise EmptyFlightSearch(
+                    origin=origin,
+                    destination=destination,
+                    departure_date=departure_date,
+                )
+            airline_names = self._extract_airline_names(all_flights)
+            logger.info(
+                "Flight search completed successfully with %d flights found",
+                len(all_flights),
             )
-        all_flights = self._extract_flight_results(items)
-        if not all_flights:
-            raise EmptyFlightSearch(
-                origin=origin,
-                destination=destination,
-                departure_date=departure_date,
+            span.update(
+                output=(
+                    FlightSearchOutcome(
+                        flights=all_flights, airline_names=airline_names
+                    ).model_dump_json()
+                    if hasattr(FlightSearchOutcome, "model_dump_json")
+                    else str(
+                        FlightSearchOutcome(
+                            flights=all_flights, airline_names=airline_names
+                        )
+                    )
+                )
             )
-        airline_names = self._extract_airline_names(all_flights)
-        logger.info(
-            "Flight search completed successfully with %d flights found",
-            len(all_flights),
-        )
-        return FlightSearchOutcome(flights=all_flights, airline_names=airline_names)
+            return FlightSearchOutcome(flights=all_flights, airline_names=airline_names)
 
     async def _fetch_dataset_items(
         self,

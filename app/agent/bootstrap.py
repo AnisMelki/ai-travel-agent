@@ -3,7 +3,9 @@ import logging
 from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from apify_client import ApifyClientAsync
 from fastapi import FastAPI
+from langfuse import Langfuse
 from openai import AsyncOpenAI
+from openinference.instrumentation.openai_agents import OpenAIAgentsInstrumentor
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
@@ -104,14 +106,53 @@ class BootstrapApify:
         logger.info("Apify client initialized successfully")
 
 
+class BootstrapLangfuse:
+    def __init__(self) -> None:
+        self.settings = get_settings()
+        self._client: Langfuse | None = None
+
+    @property
+    def client(self) -> Langfuse:
+        if self._client is None:
+            raise RuntimeError("Langfuse client has not been initialized.")
+        return self._client
+
+    async def startup(self) -> None:
+        # Instrument the OpenAI Agents SDK before any Agent/Runner call so every
+        # generation, tool call, and handoff is captured as an OTel span.
+        OpenAIAgentsInstrumentor().instrument()
+
+        self._client = Langfuse(
+            public_key=self.settings.LANGFUSE_PUBLIC_KEY,
+            secret_key=self.settings.LANGFUSE_SECRET_KEY,
+            base_url=self.settings.LANGFUSE_BASE_URL,
+            environment=self.settings.LANGFUSE_ENVIRONMENT,
+        )
+
+        if self._client.auth_check():
+            logger.info("Langfuse client initialized and authenticated successfully")
+        else:
+            logger.warning(
+                "Langfuse client initialized but authentication check failed;"
+                " check LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY/LANGFUSE_BASE_URL"
+            )
+
+    async def shutdown(self) -> None:
+        if self._client is not None:
+            self._client.flush()
+            self._client = None
+
+
 class BootstrapApplication:
     def __init__(self):
         self.agent_bootstrap = BootstrapAgent()
         self.redis_bootstrap = BootstrapRedis()
         self.apify_bootstrap = BootstrapApify()
+        self.langfuse_bootstrap = BootstrapLangfuse()
 
     async def startup(self, app: FastAPI) -> None:
         try:
+            await self.langfuse_bootstrap.startup()
             await self.agent_bootstrap.startup()
             await self.redis_bootstrap.startup()
             await self.apify_bootstrap.startup()
@@ -120,6 +161,7 @@ class BootstrapApplication:
             app.state.selection_agent = create_flights_agent_selection(model)
             app.state.redis = self.redis_bootstrap.client
             app.state.apify_client = self.apify_bootstrap.client
+            app.state.langfuse_client = self.langfuse_bootstrap.client
         except Exception:
             logger.exception("Application startup failed")
             await self.shutdown()
@@ -128,3 +170,4 @@ class BootstrapApplication:
     async def shutdown(self):
         await self.redis_bootstrap.shutdown()
         await self.agent_bootstrap.shutdown()
+        await self.langfuse_bootstrap.shutdown()

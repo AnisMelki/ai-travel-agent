@@ -1,8 +1,10 @@
 import logging
 from typing import Annotated
+from uuid import uuid4
 
 from apify_client import ApifyClientAsync
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from langfuse import get_client, propagate_attributes
 
 from app.core.config import get_settings
 from app.repositories.conversation_repository import ConversationRepository
@@ -154,15 +156,41 @@ OrchestratorDep = Annotated[FlightOrchestrator, Depends(get_orchestrator)]
 async def search_flights(
     chat_request: ChatRequest,
     orchestrator: OrchestratorDep,
+    response: Response,
+    conversation_id: str | None = Header(
+        default=None,
+        alias="X-Conversation-ID",
+    ),
 ) -> FlightResultResponse:
-    try:
-        search_request, conversation_id = await orchestrator.handle_flight_request(
-            chat_request
-        )
-        if isinstance(search_request, ClarificationResponse):
-            return search_request
-        return await orchestrator.run_flight_selection(search_request, conversation_id)
+    conversation_id = conversation_id or str(uuid4())
+    response.headers["X-Conversation-ID"] = conversation_id
+    langfuse = get_client()
+    with (
+        langfuse.start_as_current_observation(
+            as_type="span",
+            name="flight-chat-response",
+            input=chat_request.message,
+        ) as span,
+        propagate_attributes(
+            session_id=conversation_id,
+            tags=["flight-search"],
+        ),
+    ):
+        logger.info("root trace: trace_id=%s, span_id=%s", span.trace_id, span.id)
+        try:
+            search_request = await orchestrator.handle_flight_request(
+                chat_request, conversation_id
+            )
+            if isinstance(search_request, ClarificationResponse):
+                result: FlightResultResponse = search_request
+            else:
+                result = await orchestrator.run_flight_selection(
+                    search_request, conversation_id
+                )
+            span.update(output=result.model_dump(mode="json"))
+            return result
 
-    except Exception as e:
-        logger.exception("Error processing flight request")
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        except Exception as e:
+            span.update(level="ERROR", status_message=str(e))
+            logger.exception("Error processing flight request")
+            raise HTTPException(status_code=500, detail=str(e)) from e

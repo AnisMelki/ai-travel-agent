@@ -1,7 +1,8 @@
 import logging
+from langfuse import get_client
+from agents import Agent
 
-from agents import Agent, Runner
-
+from app.agent.agent_runner import run_agent_with_retry
 from app.context.flight_context import FlightAgentContext
 from app.exception.clarification import ClarificationBuilder
 from app.exception.flight_exceptions import (
@@ -35,31 +36,71 @@ class FlightSelectionService:
         logger.info(
             "Running flight selection service with user input: %s", search_request
         )
-        try:
-            return await self.flight_search_orchestrator.search_flight(search_request)
-        except UserCorrectableFlightError as e:
-            logger.error("User correctable flight error: %s", str(e))
-            translated_error = FlightErrorTranslator()
-            user_correctable_error = translated_error.translate(e)
-            return ClarificationBuilder().from_error(user_correctable_error)
+        langfuse = get_client()
+        with langfuse.start_as_current_observation(
+            as_type="tool",
+            name="search_flights",
+            input=search_request.model_dump_json(),
+        ) as span:
+            try:
+                result = await self.flight_search_orchestrator.search_flight(
+                    search_request
+                )
+                span.update(
+                    output=(
+                        result.model_dump_json()
+                        if hasattr(result, "model_dump_json")
+                        else str(result)
+                    )
+                )
+                return result
+            except UserCorrectableFlightError as e:
+                logger.error("User correctable flight error: %s", str(e))
+                translated_error = FlightErrorTranslator()
+                user_correctable_error = translated_error.translate(e)
+                clarification = ClarificationBuilder().from_error(
+                    user_correctable_error
+                )
+                span.update(output=clarification.model_dump_json())
+                return clarification
 
     async def run_agent_selection(
-        self, flight_search_response: FlightSearchResponse
+        self,
+        flight_search_response: FlightSearchResponse,
+        conversation_id: str,
     ) -> DecisionFlights:
         logger.info(
             "Running flight agent selection with %d flight results",
             len(flight_search_response.results),
         )
-        try:
-            result = await Runner.run(
-                self.agent_selection,
-                flight_search_response.model_dump_json(),
-                hooks=FlightRunHooks(),
-            )
-            return result.final_output
-        except Exception:
-            logger.exception("Unexpected error during flight agent selection")
-            raise
+        langfuse = get_client()
+        with langfuse.start_as_current_observation(
+            as_type="chain",
+            name="run_agent_selection",
+            input=flight_search_response.model_dump_json(),
+        ) as span:
+            try:
+                run = await run_agent_with_retry(
+                    self.agent_selection,
+                    flight_search_response.model_dump_json(),
+                    hooks=FlightRunHooks(),
+                    context=FlightAgentContext(
+                        flight_search_response=flight_search_response,
+                    ),
+                    conversation_id=conversation_id,
+                )
+
+                span.update(
+                    output=(
+                        run.result.model_dump_json()
+                        if hasattr(run.result, "model_dump_json")
+                        else str(run.result)
+                    )
+                )
+                return run.result.final_output
+            except Exception:
+                logger.exception("Unexpected error during flight agent selection")
+                raise
 
     @staticmethod
     def build_decision_flights_response(

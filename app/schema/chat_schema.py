@@ -9,11 +9,6 @@ from app.schema.flight_schema import FlightSearchResponse, ResponseFlights
 
 
 class ChatRequest(BaseModel):
-    conversation_id: str = Field(
-        min_length=1,
-        max_length=100,
-        description="The unique identifier for the conversation",
-    )
     message: str = Field(..., description="The message to be sent to the chatbot")
 
 

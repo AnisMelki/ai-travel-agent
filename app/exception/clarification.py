@@ -12,6 +12,7 @@ class FlightErrorCode(StrEnum):
     AIRPORT_AMBIGUOUS = "airport_ambiguous"
     FLIGHT_REQUEST_VALIDATION_ERROR = "flight_request_validation_error"
     MISSING_REQUIRED_FIELD = "missing_required_field"
+    EMPTY_FLIGHT_SEARCH = "empty_flight_search"
 
 
 class ClarificationOption(BaseModel):
@@ -47,6 +48,7 @@ class ClarificationBuilder:
             FlightErrorCode.AIRPORT_NOT_FOUND: self._build_airport_not_found,
             FlightErrorCode.AIRPORT_AMBIGUOUS: self._build_airport_ambiguity,
             FlightErrorCode.FLIGHT_REQUEST_VALIDATION_ERROR: self._build_validation_error,
+            FlightErrorCode.EMPTY_FLIGHT_SEARCH: self._build_empty_flight_search,
         }
 
     def from_missing_fields(
@@ -121,6 +123,16 @@ class ClarificationBuilder:
             message=error.message,
             field=error.field,
             code=FlightErrorCode.FLIGHT_REQUEST_VALIDATION_ERROR,
+        )
+
+    def _build_empty_flight_search(
+        self,
+        error: TranslatedError,
+    ) -> ClarificationResponse:
+        return ClarificationResponse(
+            message=error.message,
+            field=error.field,
+            code=FlightErrorCode.EMPTY_FLIGHT_SEARCH,
         )
 
     def from_invalid_airport_choice(

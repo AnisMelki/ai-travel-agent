@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from unittest.mock import AsyncMock
 
@@ -33,25 +34,30 @@ def client(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def _mock_chat_request_body(conversation_id="conv-1", message="I want to fly to Paris"):
-    return {"conversation_id": conversation_id, "message": message}
+def _mock_chat_request_body(message="I want to fly to Paris"):
+    return {"message": message}
+
+
+def _override_orchestrator(fake_orchestrator):
+    app.dependency_overrides[flight_router_module.get_orchestrator] = lambda: (
+        fake_orchestrator
+    )
 
 
 def test_search_flights_returns_clarification_response(client):
     fake_orchestrator = AsyncMock()
     fake_orchestrator.handle_flight_request = AsyncMock(
-        return_value=(
-            ClarificationResponse(
-                message="Which city are you leaving from?", field="origin"
-            ),
-            "conv-1",
+        return_value=ClarificationResponse(
+            message="Which city are you leaving from?", field="origin"
         )
     )
-    app.dependency_overrides[flight_router_module.get_orchestrator] = (
-        lambda: fake_orchestrator
-    )
+    _override_orchestrator(fake_orchestrator)
 
-    response = client.post("/flight/search", json=_mock_chat_request_body())
+    response = client.post(
+        "/flight/search",
+        json=_mock_chat_request_body(),
+        headers={"X-Conversation-ID": "conv-1"},
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -67,15 +73,15 @@ def test_search_flights_returns_flight_result_after_running_selection(client):
     )
     result = ResponseFlights(reasoning="Best price and shortest duration.")
     fake_orchestrator = AsyncMock()
-    fake_orchestrator.handle_flight_request = AsyncMock(
-        return_value=(resolved_request, "conv-1")
-    )
+    fake_orchestrator.handle_flight_request = AsyncMock(return_value=resolved_request)
     fake_orchestrator.run_flight_selection = AsyncMock(return_value=result)
-    app.dependency_overrides[flight_router_module.get_orchestrator] = (
-        lambda: fake_orchestrator
-    )
+    _override_orchestrator(fake_orchestrator)
 
-    response = client.post("/flight/search", json=_mock_chat_request_body())
+    response = client.post(
+        "/flight/search",
+        json=_mock_chat_request_body(),
+        headers={"X-Conversation-ID": "conv-1"},
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -85,29 +91,64 @@ def test_search_flights_returns_flight_result_after_running_selection(client):
     )
 
 
-def test_search_flights_passes_request_body_to_orchestrator(client):
+def test_search_flights_passes_message_and_conversation_id_to_orchestrator(client):
     fake_orchestrator = AsyncMock()
     fake_orchestrator.handle_flight_request = AsyncMock(
-        return_value=(ClarificationResponse(message="ok"), "conv-42")
+        return_value=ClarificationResponse(message="ok")
     )
-    app.dependency_overrides[flight_router_module.get_orchestrator] = (
-        lambda: fake_orchestrator
-    )
+    _override_orchestrator(fake_orchestrator)
 
     client.post(
         "/flight/search",
-        json=_mock_chat_request_body(conversation_id="conv-42", message="hello there"),
+        json=_mock_chat_request_body(message="hello there"),
+        headers={"X-Conversation-ID": "conv-42"},
     )
 
-    chat_request = fake_orchestrator.handle_flight_request.await_args.args[0]
-    assert chat_request.conversation_id == "conv-42"
+    call_args = fake_orchestrator.handle_flight_request.await_args
+    chat_request, conversation_id = call_args.args
     assert chat_request.message == "hello there"
+    assert conversation_id == "conv-42"
+
+
+def test_search_flights_generates_conversation_id_when_header_missing(client):
+    fake_orchestrator = AsyncMock()
+    fake_orchestrator.handle_flight_request = AsyncMock(
+        return_value=ClarificationResponse(message="ok")
+    )
+    _override_orchestrator(fake_orchestrator)
+
+    response = client.post("/flight/search", json=_mock_chat_request_body())
+
+    assert response.status_code == 200
+    generated_id = response.headers["X-Conversation-ID"]
+    assert generated_id
+    uuid.UUID(generated_id)  # raises ValueError if this isn't a valid UUID
+
+    _, conversation_id = fake_orchestrator.handle_flight_request.await_args.args
+    assert conversation_id == generated_id
+
+
+def test_search_flights_returns_same_conversation_id_when_header_provided(client):
+    fake_orchestrator = AsyncMock()
+    fake_orchestrator.handle_flight_request = AsyncMock(
+        return_value=ClarificationResponse(message="ok")
+    )
+    _override_orchestrator(fake_orchestrator)
+
+    response = client.post(
+        "/flight/search",
+        json=_mock_chat_request_body(),
+        headers={"X-Conversation-ID": "conv-existing"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["X-Conversation-ID"] == "conv-existing"
+    _, conversation_id = fake_orchestrator.handle_flight_request.await_args.args
+    assert conversation_id == "conv-existing"
 
 
 def test_search_flights_rejects_invalid_request_body(client):
-    response = client.post(
-        "/flight/search", json={"conversation_id": "", "message": "hi"}
-    )
+    response = client.post("/flight/search", json={})
 
     assert response.status_code == 422
 
@@ -117,10 +158,12 @@ def test_search_flights_maps_unexpected_exception_to_500(client):
     fake_orchestrator.handle_flight_request = AsyncMock(
         side_effect=RuntimeError("boom")
     )
-    app.dependency_overrides[flight_router_module.get_orchestrator] = (
-        lambda: fake_orchestrator
-    )
+    _override_orchestrator(fake_orchestrator)
 
-    response = client.post("/flight/search", json=_mock_chat_request_body())
+    response = client.post(
+        "/flight/search",
+        json=_mock_chat_request_body(),
+        headers={"X-Conversation-ID": "conv-1"},
+    )
 
     assert response.status_code == 500

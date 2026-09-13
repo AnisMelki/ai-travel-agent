@@ -35,6 +35,7 @@ from app.service.conversation_service.merger_completeness_state import (
     FlightRequestCompletenessChecker,
     FlightStateMerger,
 )
+from langfuse import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -81,13 +82,17 @@ class FlightConversationService:
             "Processing chat request for conversation_id: %s",
             state.conversation_id,
         )
+        langfuse = get_client()
 
         # 1. The user is answering a previous clarification.
+        logger.info("Processing chat request for pending clarification")
         if state.pending_clarification is not None:
-            return await self._handle_pending_clarification(
+            response, updated_state = await self._handle_pending_clarification(
                 chat_request,
                 state,
             )
+
+            return response, updated_state
 
         # 2. Normal extraction flow.
         state = state.model_copy(
@@ -95,30 +100,38 @@ class FlightConversationService:
                 "status": ConversationStatus.COLLECTING,
             }
         )
-
-        patch = await self.extraction_service.extract_flight_request(
-            chat_request,
-            state,
-        )
+        with langfuse.start_as_current_observation(
+            as_type="span",
+            name="extract flight request",
+            input={
+                "message": chat_request.message,
+                "conversation_id": state.conversation_id,
+                "status": state.status,
+            },
+        ):
+            patch = await self.extraction_service.extract_flight_request(
+                chat_request,
+                state,
+            )
 
         updated_state = self.state_merger.merge(state, patch)
 
         # 3. Still missing normal request fields.
         if not self.completeness_checker.is_complete(updated_state):
-            missing_field = self.completeness_checker.missing_fields(updated_state)
+            missing_fields = self.completeness_checker.missing_fields(updated_state)
 
             updated_state = updated_state.model_copy(
                 update={
                     "status": ConversationStatus.COLLECTING,
                     "pending_clarification": PendingClarification(
                         reason="missing_field",
-                        field_name=missing_field[0],
+                        field_name=missing_fields[0],
                     ),
                 }
             )
 
             clarification_response = self._clarification_builder.from_missing_fields(
-                missing_field
+                missing_fields
             )
 
             return clarification_response, updated_state
@@ -131,7 +144,9 @@ class FlightConversationService:
             }
         )
 
-        return await self._resolve_or_clarify_airports(updated_state)
+        response, updated_state = await self._resolve_or_clarify_airports(updated_state)
+
+        return response, updated_state
 
     async def _handle_pending_clarification(
         self,
