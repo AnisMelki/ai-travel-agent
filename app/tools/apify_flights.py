@@ -2,8 +2,9 @@ import logging
 import re
 from datetime import UTC, datetime
 from typing import Any
-from langfuse import get_client
+
 from apify_client import ApifyClientAsync
+from langfuse import get_client
 
 from app.exception.flight_exceptions import (
     EmptyFlightSearch,
@@ -81,20 +82,18 @@ class FlightSearchService:
                 "Flight search completed successfully with %d flights found",
                 len(all_flights),
             )
-            span.update(
-                output=(
-                    FlightSearchOutcome(
-                        flights=all_flights, airline_names=airline_names
-                    ).model_dump_json()
-                    if hasattr(FlightSearchOutcome, "model_dump_json")
-                    else str(
-                        FlightSearchOutcome(
-                            flights=all_flights, airline_names=airline_names
-                        )
-                    )
-                )
+            outcome = FlightSearchOutcome(
+                flights=all_flights, airline_names=airline_names
             )
-            return FlightSearchOutcome(flights=all_flights, airline_names=airline_names)
+            span.update(
+                output={
+                    "flights": [
+                        flight.model_dump(mode="json") for flight in outcome.flights
+                    ],
+                    "airline_names": sorted(outcome.airline_names),
+                }
+            )
+            return outcome
 
     async def _fetch_dataset_items(
         self,

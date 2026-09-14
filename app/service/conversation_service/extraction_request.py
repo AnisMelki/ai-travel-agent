@@ -1,7 +1,9 @@
-from datetime import date
-from langfuse import get_client
+import logging
+from datetime import UTC, date, datetime
+
 from agents import Agent
-from pydantic import BaseModel
+from langfuse import get_client
+from pydantic import BaseModel, Field
 
 from app.agent.agent_runner import run_agent_with_retry
 from app.exception.flight_exceptions import (
@@ -10,8 +12,11 @@ from app.exception.flight_exceptions import (
 )
 from app.hooks.flighs_run_hook import UsageRunHooks
 from app.schema.chat_schema import ChatRequest
-from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
-import logging
+from app.schema.state_conversation import (
+    ConversationMessage,
+    FlightAgentResponse,
+    FlightConversationState,
+)
 
 
 class FlightExtractionContext(BaseModel):
@@ -21,6 +26,8 @@ class FlightExtractionContext(BaseModel):
     return_date: date | None = None
     origin_code: str | None = None
     destination_code: str | None = None
+    history: list[ConversationMessage] = Field(default_factory=list)
+    current_date: date | None = None
 
 
 logger = logging.getLogger(__name__)
@@ -38,6 +45,8 @@ class FlightExtractionContextFactory:
             return_date=state.return_date,
             origin_code=state.origin_code,
             destination_code=state.destination_code,
+            history=state.history,
+            current_date=datetime.now(UTC).date(),
         )
 
 
@@ -48,7 +57,7 @@ class FlightRequestExtractionService:
 
     async def extract_flight_request(
         self, chat_request: ChatRequest, state: FlightConversationState
-    ) -> FlightRequestPatch:
+    ) -> FlightAgentResponse:
         logger.info(
             "Extracting flight request from user input: %s", chat_request.message
         )
@@ -86,9 +95,13 @@ class FlightRequestExtractionService:
                     hooks=UsageRunHooks(),
                     conversation_id=state.conversation_id,
                 )
-                patch = run.result.final_output
+                agent_response = run.result.final_output
 
-                if patch is None or not patch.model_dump(exclude_none=True):
+                # `type` is always set, so emptiness must be judged on the payload.
+                if agent_response is None or not (
+                    agent_response.patch.model_dump(exclude_none=True)
+                    or agent_response.reply
+                ):
                     raise FlightExtractionOutputError(
                         message="No flight request could be extracted.",
                         details={"message": "No flight request could be extracted."},
@@ -99,16 +112,22 @@ class FlightRequestExtractionService:
                     extra={
                         "event": "flight_request_extraction_success",
                         "conversation_id": state.conversation_id,
-                        "patch": patch.model_dump(exclude_none=True).keys(),
+                        "response_type": agent_response.type,
+                        "patch": sorted(
+                            agent_response.patch.model_dump(exclude_none=True)
+                        ),
+                        "has_reply": agent_response.reply is not None,
                     },
                 )
                 span.update(
                     output={
-                        "patch": patch.model_dump(mode="json", exclude_none=True),
+                        "response": agent_response.model_dump(
+                            mode="json", exclude_none=True
+                        ),
                         "metrics": run.metrics.model_dump(mode="json"),
                     }
                 )
-                return patch
+                return agent_response
 
             except UserCorrectableFlightError as exc:
                 span.update(level="WARNING", status_message=str(exc))

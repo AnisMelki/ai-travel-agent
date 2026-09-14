@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -83,7 +83,9 @@ def _make_selection_service(
 
 def _make_search_request() -> FlightSearchRequest:
     return FlightSearchRequest(
-        origin="CDG", destination="LHR", departure_date=date(2026, 9, 1)
+        origin="CDG",
+        destination="LHR",
+        departure_date=datetime.now(UTC).date() + timedelta(days=30),
     )
 
 
@@ -120,7 +122,7 @@ def test_creates_new_state_with_defaults_when_none_found():
     assert passed_state.pending_clarification is None
 
 
-def test_reuses_existing_state_object_when_found():
+def test_reuses_existing_state_when_found():
     existing_state = _make_state(conversation_id="conv-2", origin="Paris")
     updated_state = _make_state(conversation_id="conv-2", destination="London")
     response = ClarificationResponse(message="Which date?")
@@ -134,7 +136,9 @@ def test_reuses_existing_state_object_when_found():
 
     assert result is response
     passed_state = service.process_chat_request.await_args.args[1]
-    assert passed_state is existing_state
+    assert passed_state.conversation_id == "conv-2"
+    assert passed_state.origin == "Paris"
+    assert passed_state.history[-1].message == "Hello"
 
 
 # ---------------------------------------------------------------------------
@@ -144,9 +148,7 @@ def test_reuses_existing_state_object_when_found():
 
 def test_saves_the_exact_updated_state_returned_by_service():
     updated_state = _make_state(destination="Berlin")
-    response = FlightSearchRequest(
-        origin="CDG", destination="LHR", departure_date=date(2026, 9, 1)
-    )
+    response = _make_search_request()
     repository = _make_repository(get_return=_make_state())
     service = _make_service(process_result=(response, updated_state))
     orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
@@ -198,7 +200,10 @@ def test_repository_save_failure_propagates_after_service_already_ran():
         asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
 
     service.process_chat_request.assert_awaited_once()
-    repository.save.assert_awaited_once_with(updated_state)
+    repository.save.assert_awaited_once()
+    assert repository.save.await_args.args[0].conversation_id == (
+        updated_state.conversation_id
+    )
 
 
 def test_calls_happen_in_get_then_process_then_save_order():
@@ -284,7 +289,9 @@ def test_run_flight_selection_returns_built_result_and_deletes_conversation_on_s
     )
 
     assert result is built_result
-    selection_service.run_agent_selection.assert_awaited_once_with(search_response)
+    selection_service.run_agent_selection.assert_awaited_once_with(
+        search_response, "conv-77"
+    )
     selection_service.build_decision_flights_response.assert_called_once_with(
         decision, search_response
     )
@@ -301,7 +308,7 @@ def test_run_flight_selection_calls_happen_in_search_then_select_then_build_then
         call_order.append("search")
         return search_response
 
-    async def fake_run_agent_selection(flight_search_response):
+    async def fake_run_agent_selection(flight_search_response, conversation_id):
         call_order.append("select")
         return decision
 
@@ -374,3 +381,100 @@ def test_run_flight_selection_propagates_delete_exception_after_result_was_built
         asyncio.run(orchestrator.run_flight_selection(_make_search_request(), "conv-1"))
 
     selection_service.build_decision_flights_response.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# handle_chat_request (full turn: collect, then search when ready)
+# ---------------------------------------------------------------------------
+
+
+def test_handle_chat_request_returns_clarification_without_running_selection():
+    clarification = ClarificationResponse(message="Which city are you leaving from?")
+    repository = _make_repository(get_return=_make_state())
+    service = _make_service(process_result=(clarification, _make_state()))
+    selection_service = _make_selection_service()
+    orchestrator = FlightOrchestrator(repository, service, selection_service)
+
+    result = asyncio.run(
+        orchestrator.handle_chat_request(_make_chat_request(), "conv-1")
+    )
+
+    assert result is clarification
+    selection_service.search_flights.assert_not_awaited()
+    repository.delete.assert_not_awaited()
+
+
+def test_handle_chat_request_runs_selection_when_request_is_complete():
+    search_request = _make_search_request()
+    search_response = _make_flight_search_response()
+    built_result = ResponseFlights(reasoning="Best price and shortest duration.")
+    repository = _make_repository(get_return=_make_state())
+    service = _make_service(process_result=(search_request, _make_state()))
+    selection_service = _make_selection_service(
+        search_flights_return=search_response,
+        run_agent_selection_return=DecisionFlights(selected_indexes=[], reasoning="ok"),
+        build_decision_flights_response_return=built_result,
+    )
+    orchestrator = FlightOrchestrator(repository, service, selection_service)
+
+    result = asyncio.run(
+        orchestrator.handle_chat_request(_make_chat_request(), "conv-77")
+    )
+
+    assert result is built_result
+    selection_service.search_flights.assert_awaited_once_with(search_request)
+    repository.save.assert_awaited_once()
+    repository.delete.assert_awaited_once_with("conv-77")
+
+
+# ---------------------------------------------------------------------------
+# conversation history
+# ---------------------------------------------------------------------------
+
+
+def test_history_records_the_user_message_without_mutating_the_loaded_state():
+    loaded_state = _make_state()
+    repository = _make_repository(get_return=loaded_state)
+    service = _make_service(
+        process_result=(ClarificationResponse(message="Which date?"), _make_state())
+    )
+    orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
+
+    asyncio.run(
+        orchestrator.handle_flight_request(_make_chat_request("from Paris"), "conv-1")
+    )
+
+    passed_state = service.process_chat_request.await_args.args[1]
+    assert passed_state.history[-1].role == "user"
+    assert passed_state.history[-1].message == "from Paris"
+    assert loaded_state.history == []
+
+
+def test_history_records_clarification_text_not_a_serialized_response():
+    updated_state = _make_state()
+    repository = _make_repository(get_return=_make_state())
+    service = _make_service(
+        process_result=(
+            ClarificationResponse(message="Which city are you leaving from?"),
+            updated_state,
+        )
+    )
+    orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
+
+    asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
+
+    saved_state = repository.save.await_args.args[0]
+    assistant_messages = [m for m in saved_state.history if m.role == "assistant"]
+    assert len(assistant_messages) == 1
+    assert assistant_messages[0].message == "Which city are you leaving from?"
+
+
+def test_history_records_no_assistant_turn_for_a_completed_search_request():
+    repository = _make_repository(get_return=_make_state())
+    service = _make_service(process_result=(_make_search_request(), _make_state()))
+    orchestrator = FlightOrchestrator(repository, service, _make_selection_service())
+
+    asyncio.run(orchestrator.handle_flight_request(_make_chat_request(), "conv-1"))
+
+    saved_state = repository.save.await_args.args[0]
+    assert [m for m in saved_state.history if m.role == "assistant"] == []

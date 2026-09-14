@@ -10,7 +10,11 @@ from app.exception.flight_exceptions import (
     FlightExtractionOutputError,
 )
 from app.schema.chat_schema import ChatRequest
-from app.schema.state_conversation import FlightConversationState, FlightRequestPatch
+from app.schema.state_conversation import (
+    ConversationMessage,
+    FlightConversationState,
+    FlightRequestPatch,
+)
 from app.service.conversation_service.extraction_request import (
     FlightExtractionContext,
     FlightExtractionContextFactory,
@@ -45,6 +49,7 @@ def test_build_maps_all_state_fields_to_context():
         return_date=date(2026, 9, 10),
         origin_code="CDG",
         destination_code="LHR",
+        history=[ConversationMessage(role="user", message="hello")],
     )
 
     context = FlightExtractionContextFactory().build(state)
@@ -56,6 +61,8 @@ def test_build_maps_all_state_fields_to_context():
         return_date=date(2026, 9, 10),
         origin_code="CDG",
         destination_code="LHR",
+        history=[ConversationMessage(role="user", message="hello")],
+        current_date=datetime.now(UTC).date(),
     )
 
 

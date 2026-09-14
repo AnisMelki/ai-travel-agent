@@ -8,6 +8,7 @@ from app.exception.flight_exceptions import AirportNotFoundError, AmbiguityAirpo
 from app.schema.chat_schema import ChatRequest, FlightSearchRequest
 from app.schema.state_conversation import (
     ConversationStatus,
+    FlightAgentResponse,
     FlightConversationState,
     FlightRequestPatch,
     PendingClarification,
@@ -28,11 +29,19 @@ def _make_state(**overrides) -> FlightConversationState:
 
 
 class FakeExtractionService:
-    def __init__(self, patch: FlightRequestPatch):
-        self._patch = patch
+    """Accepts a bare patch and wraps it in the agent response envelope."""
+
+    def __init__(self, patch: FlightRequestPatch, reply: str | None = None):
+        self._response = FlightAgentResponse(
+            type="conversation"
+            if reply and not patch.model_dump(exclude_none=True)
+            else "extraction",
+            patch=patch,
+            reply=reply,
+        )
 
     async def extract_flight_request(self, chat_request, state):
-        return self._patch
+        return self._response
 
 
 class FakeStateMerger:
@@ -258,7 +267,7 @@ def test_extraction_service_receives_original_state_and_request():
         async def extract_flight_request(self, chat_request, state):
             received["chat_request"] = chat_request
             received["state"] = state
-            return FlightRequestPatch()
+            return FlightAgentResponse(type="extraction", patch=FlightRequestPatch())
 
     merged_state = _make_state(
         origin="paris",

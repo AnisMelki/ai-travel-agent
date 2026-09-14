@@ -1,5 +1,6 @@
 import logging
 from datetime import UTC, datetime
+from typing import Literal
 
 from langfuse import get_client
 
@@ -9,17 +10,30 @@ from app.repositories.conversation_repository import (
 )
 from app.schema.chat_schema import (
     ChatRequest,
+    ConversationResponse,
     ErrorResponse,
     FlightResultResponse,
     FlightSearchRequest,
 )
-from app.schema.state_conversation import FlightConversationState
+from app.schema.state_conversation import ConversationMessage, FlightConversationState
 from app.service.conversation_service.conversation_service import (
     FlightConversationService,
 )
 from app.service.flight_agent_service import FlightSelectionService
 
 logger = logging.getLogger(__name__)
+
+
+def _append_message(
+    state: FlightConversationState,
+    role: Literal["user", "assistant"],
+    message: str,
+) -> FlightConversationState:
+    return state.model_copy(
+        update={
+            "history": [*state.history, ConversationMessage(role=role, message=message)]
+        }
+    )
 
 
 class FlightOrchestrator:
@@ -33,9 +47,21 @@ class FlightOrchestrator:
         self.conversation_service = conversation_service
         self.selection_flights_service = selection_flights_service
 
+    async def handle_chat_request(
+        self, chat_request: ChatRequest, conversation_id: str
+    ) -> FlightResultResponse:
+        """Entry point for one conversation turn: collect, then search when ready."""
+        response = await self.handle_flight_request(chat_request, conversation_id)
+
+        # Anything other than a completed request ends the turn.
+        if not isinstance(response, FlightSearchRequest):
+            return response
+
+        return await self.run_flight_selection(response, conversation_id)
+
     async def handle_flight_request(
         self, chat_request: ChatRequest, conversation_id: str
-    ) -> FlightSearchRequest | ClarificationResponse:
+    ) -> FlightSearchRequest | ClarificationResponse | ConversationResponse:
         logger.info(f"Handling flight request for conversation_id: {conversation_id}")
         langfuse = get_client()
 
@@ -53,12 +79,19 @@ class FlightOrchestrator:
                     updated_at=datetime.now(UTC),
                 )
 
+            state = _append_message(state, "user", chat_request.message)
+
             (
                 response,
                 updated_state,
             ) = await self.conversation_service.process_chat_request(
                 chat_request, state
             )
+            # A ConversationResponse is already recorded by the conversation service.
+            if isinstance(response, ClarificationResponse):
+                updated_state = _append_message(
+                    updated_state, "assistant", response.message
+                )
             await self.conversation_repository.save(updated_state)
             span.update(
                 output=(

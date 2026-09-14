@@ -1,5 +1,7 @@
 import logging
+
 from langfuse import get_client
+
 from app.schema.chat_schema import FlightSearchRequest, ResolvedRequest
 from app.schema.flight_schema import FlightSearchResponse
 from app.tools.apify_airlines import AirlineReviewService

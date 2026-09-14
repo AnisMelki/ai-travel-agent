@@ -1,9 +1,12 @@
 import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+
 from app.agent.bootstrap import BootstrapApplication
 from app.core.config import configure_logging
+from app.handlers.http_error_handlers import register_exception_handlers
 from app.router.flight_router import router as flight_router
 
 
@@ -20,6 +23,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Flight API", version="1.0.0", lifespan=lifespan, docs_url=None)
 app.include_router(flight_router)
+register_exception_handlers(app)
 
 
 @app.get("/docs", include_in_schema=False)

@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from agents import Agent, ModelSettings
+from agents import Agent, ModelSettings, RunContextWrapper
 from jinja2 import Environment, FileSystemLoader
 
 from app.schema.flight_schema import DecisionFlights
-from app.schema.state_conversation import FlightRequestPatch
+from app.schema.state_conversation import FlightAgentResponse
 
 template_dir = Path(__file__).parent.parent / "template"
 
@@ -20,13 +20,26 @@ def render_prompt(template_name: str, **kwargs) -> str:
     return template.render(**kwargs)
 
 
+async def flight_agent_instructions(
+    ctx: RunContextWrapper,
+    agent: Agent,
+) -> str:
+    context = ctx.context
+
+    return render_prompt(
+        "prompt_agent_flights.jinja2",
+        current_date=context.current_date,
+        history=context.history[-8:],
+    )
+
+
 def create_flight_agent(model):
     return Agent(
         name="FlightAgent",
-        instructions=render_prompt("prompt_agent_flights.jinja2"),
+        instructions=flight_agent_instructions,
         model=model,
         tools=[],
-        output_type=FlightRequestPatch,
+        output_type=FlightAgentResponse,
         model_settings=ModelSettings(
             tool_choice="auto", parallel_tool_calls=False, temperature=0.0
         ),

@@ -2,6 +2,7 @@ import logging
 from collections.abc import Callable
 from typing import ClassVar
 
+from langfuse import get_client
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database.session import SessionLocal
@@ -17,10 +18,12 @@ from app.repositories.airport_repository import AirportRepository
 from app.schema.chat_schema import (
     ChatRequest,
     ClarificationResponse,
+    ConversationResponse,
     FlightSearchRequest,
 )
 from app.schema.state_conversation import (
     ClarificationReason,
+    ConversationMessage,
     ConversationStatus,
     FlightConversationState,
     PendingClarification,
@@ -35,7 +38,6 @@ from app.service.conversation_service.merger_completeness_state import (
     FlightRequestCompletenessChecker,
     FlightStateMerger,
 )
-from langfuse import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -75,26 +77,35 @@ class FlightConversationService:
         chat_request: ChatRequest,
         state: FlightConversationState,
     ) -> tuple[
-        FlightSearchRequest | ClarificationResponse,
+        FlightSearchRequest | ClarificationResponse | ConversationResponse,
         FlightConversationState,
     ]:
         logger.info(
             "Processing chat request for conversation_id: %s",
             state.conversation_id,
         )
-        langfuse = get_client()
 
-        # 1. The user is answering a previous clarification.
-        logger.info("Processing chat request for pending clarification")
+        # The user is answering a previous clarification.
         if state.pending_clarification is not None:
-            response, updated_state = await self._handle_pending_clarification(
+            logger.info("Processing an answer to a pending clarification")
+            return await self._handle_pending_clarification(
                 chat_request,
                 state,
             )
 
-            return response, updated_state
+        return await self._run_extraction_flow(chat_request, state)
 
-        # 2. Normal extraction flow.
+    async def _run_extraction_flow(
+        self,
+        chat_request: ChatRequest,
+        state: FlightConversationState,
+    ) -> tuple[
+        FlightSearchRequest | ClarificationResponse | ConversationResponse,
+        FlightConversationState,
+    ]:
+        langfuse = get_client()
+
+        # 1. Extract the agent response and merge its patch into the state.
         state = state.model_copy(
             update={
                 "status": ConversationStatus.COLLECTING,
@@ -109,15 +120,34 @@ class FlightConversationService:
                 "status": state.status,
             },
         ):
-            patch = await self.extraction_service.extract_flight_request(
+            agent_response = await self.extraction_service.extract_flight_request(
                 chat_request,
                 state,
             )
 
-        updated_state = self.state_merger.merge(state, patch)
+        updated_state = self.state_merger.merge(state, agent_response.patch)
 
-        # 3. Still missing normal request fields.
+        # 2. Still missing required request fields.
         if not self.completeness_checker.is_complete(updated_state):
+            # The agent's own words take priority over a canned question.
+            if agent_response.reply:
+                updated_state = updated_state.model_copy(
+                    update={
+                        "status": ConversationStatus.COLLECTING,
+                        "pending_clarification": None,
+                        "history": [
+                            *updated_state.history,
+                            ConversationMessage(
+                                role="assistant", message=agent_response.reply
+                            ),
+                        ],
+                    }
+                )
+
+                return ConversationResponse(
+                    type="conversation", message=agent_response.reply
+                ), updated_state
+
             missing_fields = self.completeness_checker.missing_fields(updated_state)
 
             updated_state = updated_state.model_copy(
@@ -136,7 +166,7 @@ class FlightConversationService:
 
             return clarification_response, updated_state
 
-        # 4. All normal fields exist. Resolve airports.
+        # 3. All required fields exist. Resolve airports.
         updated_state = updated_state.model_copy(
             update={
                 "status": ConversationStatus.RESOLVING_AIRPORTS,
@@ -144,24 +174,19 @@ class FlightConversationService:
             }
         )
 
-        response, updated_state = await self._resolve_or_clarify_airports(updated_state)
-
-        return response, updated_state
+        return await self._resolve_or_clarify_airports(updated_state)
 
     async def _handle_pending_clarification(
         self,
         chat_request: ChatRequest,
         state: FlightConversationState,
     ) -> tuple[
-        FlightSearchRequest | ClarificationResponse,
+        FlightSearchRequest | ClarificationResponse | ConversationResponse,
         FlightConversationState,
     ]:
         pending = state.pending_clarification
         if pending is None:
-            return await self.process_chat_request(
-                chat_request,
-                state,
-            )
+            return await self._run_extraction_flow(chat_request, state)
 
         if pending.reason == "ambiguous_airport":
             return await self._handle_ambiguous_airport_clarification(
@@ -181,10 +206,7 @@ class FlightConversationService:
                 }
             )
 
-            return await self.process_chat_request(
-                chat_request,
-                cleared_state,
-            )
+            return await self._run_extraction_flow(chat_request, cleared_state)
 
         raise ValueError(f"Unsupported clarification reason: {pending.reason}")
 
@@ -193,17 +215,14 @@ class FlightConversationService:
         chat_request: ChatRequest,
         state: FlightConversationState,
     ) -> tuple[
-        FlightSearchRequest | ClarificationResponse,
+        FlightSearchRequest | ClarificationResponse | ConversationResponse,
         FlightConversationState,
     ]:
         pending = state.pending_clarification
 
         selected_code = chat_request.message.strip().upper()
         if pending is None:
-            return await self.process_chat_request(
-                chat_request,
-                state,
-            )
+            return await self._run_extraction_flow(chat_request, state)
 
         if selected_code not in pending.allowed_airport_codes:
             clarification_response = (

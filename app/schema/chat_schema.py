@@ -31,12 +31,21 @@ class ErrorResponse(BaseModel):
     )
 
 
+class ConversationResponse(BaseModel):
+    """A natural-language reply from the agent that asks for no specific field."""
+
+    type: Literal["conversation"] = Field(
+        "conversation", description="The type of the response"
+    )
+    message: str = Field(..., description="The assistant's conversational reply")
+
+
 FlightChatResponse = Annotated[
     ClarificationResponse | FlightSearchResponse | ErrorResponse,
     Field(..., description="The type of the response"),
 ]
 FlightResultResponse = Annotated[
-    ClarificationResponse | ResponseFlights | ErrorResponse,
+    ClarificationResponse | ConversationResponse | ResponseFlights | ErrorResponse,
     Field(..., description="The type of the response"),
 ]
 

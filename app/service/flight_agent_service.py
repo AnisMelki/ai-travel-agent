@@ -1,6 +1,7 @@
 import logging
-from langfuse import get_client
+
 from agents import Agent
+from langfuse import get_client
 
 from app.agent.agent_runner import run_agent_with_retry
 from app.context.flight_context import FlightAgentContext

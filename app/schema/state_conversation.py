@@ -39,6 +39,11 @@ class PendingClarification(BaseModel):
     allowed_airport_codes: list[str] = Field(default_factory=list)
 
 
+class ConversationMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    message: str
+
+
 class FlightConversationState(BaseModel):
     conversation_id: str
     origin: str | None = None
@@ -52,6 +57,7 @@ class FlightConversationState(BaseModel):
     created_at: datetime
     updated_at: datetime
     pending_clarification: PendingClarification | None = None
+    history: list[ConversationMessage] = Field(default_factory=list)
 
 
 class FlightRequestPatch(BaseModel):
@@ -78,3 +84,11 @@ class FlightRequestPatch(BaseModel):
             raise ValueError("An IATA airport code must contain exactly 3 letters.")
 
         return normalized
+
+
+class FlightAgentResponse(BaseModel):
+    type: Literal["extraction", "conversation", "mixed"]
+
+    patch: FlightRequestPatch = Field(default_factory=FlightRequestPatch)
+
+    reply: str | None = None

@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from apify_client import ApifyClientAsync
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, Request, Response
 from langfuse import get_client, propagate_attributes
 
 from app.core.config import get_settings
@@ -11,7 +11,6 @@ from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.redis_conversation_repository import RedisConversationRepository
 from app.schema.chat_schema import (
     ChatRequest,
-    ClarificationResponse,
     FlightResultResponse,
 )
 from app.service.conversation_service.conversation_service import (
@@ -178,19 +177,13 @@ async def search_flights(
     ):
         logger.info("root trace: trace_id=%s, span_id=%s", span.trace_id, span.id)
         try:
-            search_request = await orchestrator.handle_flight_request(
+            result = await orchestrator.handle_chat_request(
                 chat_request, conversation_id
             )
-            if isinstance(search_request, ClarificationResponse):
-                result: FlightResultResponse = search_request
-            else:
-                result = await orchestrator.run_flight_selection(
-                    search_request, conversation_id
-                )
-            span.update(output=result.model_dump(mode="json"))
-            return result
-
         except Exception as e:
+            # Status-code mapping lives in the registered exception handlers.
             span.update(level="ERROR", status_message=str(e))
-            logger.exception("Error processing flight request")
-            raise HTTPException(status_code=500, detail=str(e)) from e
+            raise
+
+        span.update(output=result.model_dump(mode="json"))
+        return result
