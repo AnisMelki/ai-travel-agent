@@ -46,6 +46,9 @@ def create_flight_agent(model):
     )
 
 
+# creation of agent selection
+
+
 def create_flights_agent_selection(model):
     return Agent(
         name="FlightAgentSelection",
