@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -16,6 +16,9 @@ from app.schema.chat_schema import FlightSearchRequest
 from app.schema.flight_schema import FlightSearchResponse, FlightSearchResult
 from app.service.flight_agent_service import FlightSelectionService
 
+# Relative so the departure-date validator does not reject these as time passes.
+_FUTURE_DEPARTURE = datetime.now(UTC).date() + timedelta(days=30)
+
 
 def _make_flight(flight_type: str) -> FlightSearchResult:
     return FlightSearchResult(
@@ -31,7 +34,7 @@ def _make_search_request() -> FlightSearchRequest:
     return FlightSearchRequest(
         origin="CDG",
         destination="LHR",
-        departure_date=date(2026, 9, 1),
+        departure_date=_FUTURE_DEPARTURE,
     )
 
 
@@ -129,18 +132,22 @@ def test_run_agent_selection_returns_final_output_on_success():
     expected_decision = SimpleNamespace(selected_indexes=[0], reasoning="best")
     fake_agent = object()
     service = _make_service(agent_selection=fake_agent)
+    run = SimpleNamespace(result=SimpleNamespace(final_output=expected_decision))
 
     with patch(
-        "app.service.flight_agent_service.Runner.run",
-        new=AsyncMock(return_value=SimpleNamespace(final_output=expected_decision)),
+        "app.service.flight_agent_service.run_agent_with_retry",
+        new=AsyncMock(return_value=run),
     ) as mock_run:
-        result = asyncio.run(service.run_agent_selection(flight_search_response))
+        result = asyncio.run(
+            service.run_agent_selection(flight_search_response, "conv-1")
+        )
 
     assert result is expected_decision
     mock_run.assert_awaited_once()
     call_args = mock_run.call_args
     assert call_args.args == (fake_agent, flight_search_response.model_dump_json())
     assert isinstance(call_args.kwargs["hooks"], FlightRunHooks)
+    assert call_args.kwargs["conversation_id"] == "conv-1"
 
 
 def test_run_agent_selection_reraises_unexpected_errors():
@@ -149,12 +156,12 @@ def test_run_agent_selection_reraises_unexpected_errors():
 
     with (
         patch(
-            "app.service.flight_agent_service.Runner.run",
+            "app.service.flight_agent_service.run_agent_with_retry",
             new=AsyncMock(side_effect=RuntimeError("agent run failed")),
         ),
         pytest.raises(RuntimeError, match="agent run failed"),
     ):
-        asyncio.run(service.run_agent_selection(flight_search_response))
+        asyncio.run(service.run_agent_selection(flight_search_response, "conv-1"))
 
 
 # ---------------------------------------------------------------------------

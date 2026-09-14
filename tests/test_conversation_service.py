@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,6 +16,10 @@ from app.schema.state_conversation import (
 from app.service.conversation_service.conversation_service import (
     FlightConversationService,
 )
+
+# Relative so the departure-date validator does not reject these as time passes.
+_FUTURE_DEPARTURE = datetime.now(UTC).date() + timedelta(days=30)
+_FUTURE_RETURN = _FUTURE_DEPARTURE + timedelta(days=9)
 
 
 def _make_state(**overrides) -> FlightConversationState:
@@ -82,7 +86,7 @@ def _build_service(
     merged_state = merged_state or _make_state(
         origin="paris",
         destination="london",
-        departure_date=date(2026, 9, 1),
+        departure_date=_FUTURE_DEPARTURE,
     )
     kwargs = {}
     if airport_resolution_service_factory is not None:
@@ -210,7 +214,7 @@ def test_resolve_airport_codes_uses_injected_session_and_factory():
     merged_state = _make_state(
         origin="paris",
         destination="london",
-        departure_date=date(2026, 9, 1),
+        departure_date=_FUTURE_DEPARTURE,
     )
     service = FlightConversationService(
         extraction_service=FakeExtractionService(FlightRequestPatch()),
@@ -233,8 +237,8 @@ def test_flight_search_request_preserves_dates_from_state():
     merged_state = _make_state(
         origin="paris",
         destination="london",
-        departure_date=date(2026, 9, 1),
-        return_date=date(2026, 9, 10),
+        departure_date=_FUTURE_DEPARTURE,
+        return_date=_FUTURE_RETURN,
     )
 
     class FakeAirportResolutionService:
@@ -256,8 +260,8 @@ def test_flight_search_request_preserves_dates_from_state():
         service.process_chat_request(chat_request, state)
     )
 
-    assert updated_state.departure_date == date(2026, 9, 1)
-    assert updated_state.return_date == date(2026, 9, 10)
+    assert updated_state.departure_date == _FUTURE_DEPARTURE
+    assert updated_state.return_date == _FUTURE_RETURN
 
 
 def test_extraction_service_receives_original_state_and_request():
@@ -272,7 +276,7 @@ def test_extraction_service_receives_original_state_and_request():
     merged_state = _make_state(
         origin="paris",
         destination="london",
-        departure_date=date(2026, 9, 1),
+        departure_date=_FUTURE_DEPARTURE,
     )
     service = FlightConversationService(
         extraction_service=SpyExtractionService(),
@@ -497,7 +501,7 @@ def test_pending_ambiguous_airport_valid_choice_normalizes_case_and_whitespace()
     state = _make_state(
         origin="paris",
         destination="london",
-        departure_date=date(2026, 9, 1),
+        departure_date=_FUTURE_DEPARTURE,
         pending_clarification=pending,
         status=ConversationStatus.RESOLVING_AIRPORTS,
     )
@@ -539,7 +543,7 @@ def test_pending_ambiguous_airport_valid_choice_for_destination_field():
     state = _make_state(
         origin="paris",
         destination="london",
-        departure_date=date(2026, 9, 1),
+        departure_date=_FUTURE_DEPARTURE,
         pending_clarification=pending,
         status=ConversationStatus.RESOLVING_AIRPORTS,
     )

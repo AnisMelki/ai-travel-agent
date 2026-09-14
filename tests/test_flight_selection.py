@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +9,11 @@ from app.schema.airline_reviews_schema import AirlineSummary
 from app.schema.chat_schema import FlightSearchRequest
 from app.schema.flight_schema import FlightSearchOutcome, FlightSearchResult
 from app.tools.flight_selection import FlightSearchOrchestrator
+
+# Relative so the departure-date validator does not reject these as time passes.
+_FUTURE_DEPARTURE = datetime.now(UTC).date() + timedelta(days=30)
+_FUTURE_RETURN = _FUTURE_DEPARTURE + timedelta(days=9)
+_FUTURE_ALT_DEPARTURE = _FUTURE_DEPARTURE + timedelta(days=14)
 
 
 def _make_flight(flight_type: str) -> FlightSearchResult:
@@ -25,13 +30,13 @@ def _make_search_request(
     *,
     origin="TUN",
     destination="YUL",
-    departure_date=date(2026, 9, 1),
+    departure_date=None,
     return_date=None,
 ) -> FlightSearchRequest:
     return FlightSearchRequest(
         origin=origin,
         destination=destination,
-        departure_date=departure_date,
+        departure_date=departure_date or _FUTURE_DEPARTURE,
         return_date=return_date,
     )
 
@@ -67,7 +72,7 @@ def test_search_flight_returns_response_with_airline_reviews():
         return_value=airline_summaries
     )
     orchestrator = FlightSearchOrchestrator(flight_service, airline_review_service)
-    search_request = _make_search_request(return_date=date(2026, 9, 10))
+    search_request = _make_search_request(return_date=_FUTURE_RETURN)
 
     response = asyncio.run(orchestrator.search_flight(search_request))
 
@@ -76,8 +81,8 @@ def test_search_flight_returns_response_with_airline_reviews():
     flight_service.search_flight.assert_awaited_once_with(
         origin="TUN",
         destination="YUL",
-        departure_date="2026-09-01",
-        return_date="2026-09-10",
+        departure_date=_FUTURE_DEPARTURE.isoformat(),
+        return_date=_FUTURE_RETURN.isoformat(),
     )
     airline_review_service.get_airline_summaries.assert_awaited_once_with(
         airline_names={"Example Air"}, max_reviews=10
@@ -92,7 +97,7 @@ def test_search_flight_converts_dates_to_iso_strings_and_omits_missing_return_da
     airline_review_service = _make_airline_review_service()
     orchestrator = FlightSearchOrchestrator(flight_service, airline_review_service)
     search_request = _make_search_request(
-        departure_date=date(2026, 9, 15), return_date=None
+        departure_date=_FUTURE_ALT_DEPARTURE, return_date=None
     )
 
     asyncio.run(orchestrator.search_flight(search_request))
@@ -100,7 +105,7 @@ def test_search_flight_converts_dates_to_iso_strings_and_omits_missing_return_da
     flight_service.search_flight.assert_awaited_once_with(
         origin="TUN",
         destination="YUL",
-        departure_date="2026-09-15",
+        departure_date=_FUTURE_ALT_DEPARTURE.isoformat(),
         return_date=None,
     )
 
