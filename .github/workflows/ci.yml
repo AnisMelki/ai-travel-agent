@@ -43,4 +43,7 @@ jobs:
           APIFY_API_TOKEN: test-token
           REDIS_URL: redis://localhost:6379/0
           REDIS_CONVERSATION_TTL_SECONDS: "3600"
+          LANGFUSE_PUBLIC_KEY: test-public-key
+          LANGFUSE_SECRET_KEY: test-secret-key
+          LANGFUSE_BASE_URL: https://example.langfuse.local
         run: uv run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
