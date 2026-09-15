@@ -14,9 +14,9 @@ class Settings(BaseSettings):
     APIFY_API_TOKEN: str
     REDIS_URL: str
     REDIS_CONVERSATION_TTL_SECONDS: int
-    LANGFUSE_PUBLIC_KEY: str
-    LANGFUSE_SECRET_KEY: str
-    LANGFUSE_BASE_URL: str
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_BASE_URL: str | None = None
     LANGFUSE_ENVIRONMENT: str = "development"
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

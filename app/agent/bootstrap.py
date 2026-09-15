@@ -122,6 +122,19 @@ class BootstrapLangfuse:
         # generation, tool call, and handoff is captured as an OTel span.
         OpenAIAgentsInstrumentor().instrument()
 
+        if not all(
+            [
+                self.settings.LANGFUSE_PUBLIC_KEY,
+                self.settings.LANGFUSE_SECRET_KEY,
+                self.settings.LANGFUSE_BASE_URL,
+            ]
+        ):
+            logger.warning(
+                "Langfuse configuration is incomplete; instrumentation client disabled"
+            )
+            self._client = None
+            return
+
         self._client = Langfuse(
             public_key=self.settings.LANGFUSE_PUBLIC_KEY,
             secret_key=self.settings.LANGFUSE_SECRET_KEY,
