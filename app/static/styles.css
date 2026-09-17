@@ -1,0 +1,352 @@
+:root {
+    color-scheme: dark;
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-alt: #1f232c;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #4f8cff;
+    --danger: #ff6b6b;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.app {
+    max-width: 820px;
+    margin: 0 auto;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.header h1 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.subtitle {
+    margin: 4px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.badge {
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+}
+
+.reset-btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.reset-btn:hover {
+    color: var(--text);
+    border-color: var(--accent);
+}
+
+.progress {
+    height: 3px;
+    border-radius: 999px;
+    background: var(--panel-alt);
+    overflow: hidden;
+}
+
+.progress-bar {
+    height: 100%;
+    width: 35%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(385%);
+    }
+}
+
+.messages {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.msg {
+    max-width: 88%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+.msg.user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: #fff;
+}
+
+.msg.agent {
+    align-self: flex-start;
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+}
+
+.msg.error {
+    align-self: flex-start;
+    background: rgba(255, 107, 107, 0.12);
+    border: 1px solid var(--danger);
+    color: var(--danger);
+}
+
+.msg.wide {
+    max-width: 100%;
+    width: 100%;
+}
+
+.msg.pending {
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.dots {
+    display: inline-flex;
+    gap: 4px;
+    flex: none;
+}
+
+.dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: blink 1.4s ease-in-out infinite;
+}
+
+.dots span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.dots span:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes blink {
+
+    0%,
+    80%,
+    100% {
+        opacity: 0.25;
+    }
+
+    40% {
+        opacity: 1;
+    }
+}
+
+.pending-label {
+    font-style: italic;
+}
+
+.pending-elapsed {
+    font-size: 12px;
+    opacity: 0.7;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    .progress-bar,
+    .dots span {
+        animation: none;
+    }
+
+    .progress-bar {
+        width: 100%;
+    }
+}
+
+.options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.option-btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 999px;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.option-btn:hover:enabled {
+    background: var(--accent);
+    color: #fff;
+}
+
+.option-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.table-scroll {
+    margin-top: 12px;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+}
+
+.flights-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.flights-table th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    padding: 9px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+}
+
+.flights-table td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.flights-table tr:last-child td {
+    border-bottom: none;
+}
+
+.flight-row {
+    cursor: pointer;
+}
+
+.flight-row:hover,
+.flight-row:focus-visible,
+.flight-row.expanded {
+    background: rgba(79, 140, 255, 0.1);
+    outline: none;
+}
+
+.flights-table .rank {
+    color: var(--muted);
+    width: 1%;
+}
+
+.flights-table .route {
+    font-weight: 600;
+}
+
+.flights-table .price {
+    color: var(--accent);
+    font-weight: 600;
+    text-align: right;
+}
+
+.flight-detail td {
+    background: rgba(0, 0, 0, 0.25);
+    white-space: normal;
+}
+
+.flight-leg {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 2px 0;
+}
+
+.flight-leg.layover {
+    color: var(--accent);
+    opacity: 0.8;
+}
+
+.composer {
+    display: flex;
+    gap: 8px;
+}
+
+.composer input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-size: 15px;
+}
+
+.composer input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.composer button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 22px;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.composer button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}

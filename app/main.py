@@ -1,13 +1,17 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.agent.bootstrap import BootstrapApplication
 from app.core.config import configure_logging
 from app.handlers.http_error_handlers import register_exception_handlers
 from app.router.flight_router import router as flight_router
+
+STATIC_DIR = Path(__file__).parent / "static"
 
 
 @asynccontextmanager
@@ -24,6 +28,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Flight API", version="1.0.0", lifespan=lifespan, docs_url=None)
 app.include_router(flight_router)
 register_exception_handlers(app)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+async def chat_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/docs", include_in_schema=False)

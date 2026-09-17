@@ -5,7 +5,7 @@ from agents import Agent, Runner, RunResult
 from agents.exceptions import ModelBehaviorError
 from langfuse import get_client
 
-from app.core.config import get_settings
+from app.core.config import settings
 from app.hooks.flighs_run_hook import UsageRunHooks
 from app.observability.llm_logger import log_llm_metrics
 from app.observability.llm_metrics import LLMCallMetrics
@@ -15,9 +15,6 @@ from app.observability.llm_metrics import LLMCallMetrics
 class AgentRunResult:
     result: RunResult
     metrics: LLMCallMetrics
-
-
-settings = get_settings()
 
 
 async def run_agent_with_retry(

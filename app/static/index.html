@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+    <div class="app">
+        <header class="header">
+            <div>
+                <h1>Flight Agent</h1>
+                <p class="subtitle">Dites-moi d'où vous partez et où vous allez.</p>
+            </div>
+            <div class="header-actions">
+                <span id="conversation-badge" class="badge" hidden></span>
+                <button id="reset" type="button" class="reset-btn">Nouvelle conversation</button>
+            </div>
+        </header>
+
+        <div id="progress" class="progress" hidden aria-hidden="true">
+            <div class="progress-bar"></div>
+        </div>
+
+        <main id="messages" class="messages" aria-live="polite"></main>
+
+        <form id="chat-form" class="composer" autocomplete="off">
+            <input id="message" name="message" type="text" placeholder="Ex: Je veux aller de Paris à Tunis le 12 octobre"
+                required maxlength="1000" aria-label="Votre message">
+            <button id="send" type="submit">Envoyer</button>
+        </form>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>
