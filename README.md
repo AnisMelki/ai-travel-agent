@@ -208,7 +208,7 @@ The traces and metrics above provide the raw signal; a systematic evaluation har
 | **Retry rate** | Frequency of `ModelBehaviorError` retries, as a proxy for prompt/schema drift. | Available — `retry_count` is logged per call |
 | **Provider error rate** | Apify failures, timeouts and empty result sets. | Available — typed exceptions and JSON logs |
 
-The first step towards the planned items is a fixture set of conversations replayed against stubbed Apify and LLM providers, which is also listed under Future Improvements.
+The first step towards the planned items is a fixture set of conversations replayed against stubbed Apify and LLM providers.
 
 ---
 
@@ -333,9 +333,5 @@ Configuration is supplied entirely through environment variables. The airport da
 
 These are not implemented today:
 
-- Trim the stored conversation history, which currently grows without bound within a conversation's TTL.
-- Add optimistic-concurrency handling on conversation state so simultaneous turns on the same conversation cannot overwrite each other.
-- Replace the bundled SQLite airport database with a managed datastore, or add a country/region filter to reduce ambiguous city matches.
-- Extract the repeated Langfuse span boilerplate into a decorator to slim down the service and tool methods.
-- Internationalize the clarification messages and web UI, which are currently French-only.
-- Add integration tests that exercise the full HTTP flow against stubbed Apify and LLM providers.
+- **Parallelise the airline review calls** — `AirlineReviewService.get_airline_summaries` currently fetches Skytrax reviews one airline at a time in a sequential loop. Running them concurrently (`asyncio.gather` with a bounded semaphore, keeping the existing best-effort per-airline error handling) would cut the search latency roughly by the number of distinct airlines returned.
+- **Extend the system with more agents** — the two-agent split (conversation/extraction and selection) generalises to the rest of a trip: a hotel agent, an Airbnb agent and a weather agent, each with its own Apify actor or API, its own prompt and its own structured output type, coordinated by the existing orchestrator so a single conversation can plan flights, accommodation and dates together.
