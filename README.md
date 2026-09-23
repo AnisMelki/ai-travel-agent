@@ -1,6 +1,6 @@
 # AI Travel Agent
 
-A conversational AI flight-search agent. Users describe a trip in natural language, and the application collects the missing details over multiple turns, resolves cities to airports, searches real flight offers, and asks an LLM agent to select and justify the best options. It runs as a live cloud application backed by FastAPI, Redis, Apify and an OpenRouter-hosted LLM.
+**A production-shaped, multi-turn LLM agent system for flight search.** A user describes a trip in natural language; the application collects the missing details across turns, resolves cities to airports, queries real flight data, and returns recommended flight options with written reasoning.
 
 **Live demo: https://ai-travel-agent-gvce.onrender.com**
 
@@ -10,21 +10,20 @@ A conversational AI flight-search agent. Users describe a trip in natural langua
 [![CI](https://github.com/AnisMelki/ai-travel-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/AnisMelki/ai-travel-agent/actions/workflows/ci.yml)
 [![Deployed on Render](https://img.shields.io/badge/Render-live-46E3B7?logo=render&logoColor=white)](https://ai-travel-agent-gvce.onrender.com)
 
+> Clarification messages and the web UI are in French.
+
 ---
 
-## Key Features
+## Key Engineering Highlights
 
-- **Conversational flight search** — a single chat endpoint (`POST /flight/search`) handles greetings, questions, corrections and search requests.
-- **Multi-turn information collection** — the agent extracts `origin`, `destination`, `departure_date` and optional `return_date` incrementally; a search only starts once the required fields are present.
-- **Conversation persistence** — each turn's state (collected fields, status, pending clarification, message history) is stored in Redis under a conversation id with a configurable TTL.
-- **Airport resolution** — city names are resolved to IATA codes from a local SQLite airport database (exact city match, then a fuzzy fallback on code/city/airport name).
-- **Clarification and recovery** — missing fields, unknown locations and ambiguous cities produce structured clarification responses, including selectable airport options, instead of failures.
-- **Real flight data via Apify** — flight offers come from a Google Flights scraper actor; airline quality is enriched with Skytrax review summaries (best-effort per airline).
-- **AI-based flight selection** — a second agent ranks the results on price, duration, layovers and airline reviews, returning two picks with written reasoning.
-- **Observability** — every request is traced end-to-end in Langfuse via OpenTelemetry, with per-call latency, token usage and retry counts also emitted as structured JSON logs.
-- **Retries and typed errors** — malformed model output is retried; a domain exception hierarchy is mapped to explicit HTTP status codes without leaking provider internals.
-
-> The assistant's clarification messages and the bundled web UI are written in French.
+- **Two specialised agents, not one prompt** — a Conversation/Extraction Agent owns the dialogue and slot filling; a Flight Selection Agent ranks real search results. Each has its own prompt, schema and failure mode.
+- **Structured LLM outputs end to end** — both agents use the Agents SDK `output_type` contract (`FlightAgentResponse`, `DecisionFlights`) validated by Pydantic. No free-text parsing anywhere.
+- **Stateful multi-turn conversations** — conversation state is persisted in Redis with a TTL, updated immutably (`model_copy`) with a version counter, so a turn is a pure state transition.
+- **Deterministic tool execution** — Apify actors and the airport database are called by the service layer, not exposed as agent tools, so the external-data path is testable and cannot be skipped or hallucinated by the model.
+- **Failure handling as a design axis** — a domain exception hierarchy separates *user-correctable* errors (turned back into clarification questions) from *provider* errors (mapped to HTTP status codes, with internal details kept out of responses).
+- **Retries on invalid model output** — `run_agent_with_retry` re-runs the agent on `ModelBehaviorError` and records the retry count as a metric.
+- **Observability built into the request path** — Langfuse via OpenTelemetry traces every turn under a `session_id`, alongside JSON-logged latency, token usage and retry metrics.
+- **Shipped, not a notebook** — Dockerised, deployed on Render, with a CI pipeline running Ruff, mypy and 196 tests behind an 80% coverage gate.
 
 ---
 
@@ -32,96 +31,79 @@ A conversational AI flight-search agent. Users describe a trip in natural langua
 
 ```mermaid
 flowchart TD
-    U[User / Browser]
-    UI["Static chat UI<br/>app/static"]
+    U["User / Chat UI<br/>(app/static)"]
     API["FastAPI<br/>POST /flight/search"]
     ORCH["FlightOrchestrator<br/>one conversation turn"]
-    CONV["FlightConversationService<br/>extract, merge, validate"]
-    AGENT["Extraction agent<br/>OpenAI Agents SDK"]
     REDIS[("Redis<br/>conversation state + TTL")]
-    AIRPORT["AirportResolutionService<br/>SQLAlchemy async"]
-    DB[("SQLite<br/>airports.db")]
-    SEL["FlightSelectionService"]
-    FSO["FlightSearchOrchestrator"]
-    APIFY["Apify actors<br/>flights + airline reviews"]
-    PICK["Selection agent<br/>DecisionFlights"]
-    LLM["OpenRouter LLM"]
-    OBS["Langfuse / OpenTelemetry<br/>+ JSON logs"]
 
-    U --> UI --> API --> ORCH
+    subgraph CONV["Conversation layer"]
+        CS["FlightConversationService<br/>merge · completeness · clarify"]
+        A1["Conversation / Extraction Agent<br/>output: FlightAgentResponse"]
+        AIR["AirportResolutionService"]
+        DB[("SQLite<br/>airports.db")]
+    end
+
+    subgraph SEARCH["Search &amp; selection layer"]
+        FSO["FlightSearchOrchestrator"]
+        APIFY["Apify actors<br/>Google Flights · Skytrax reviews"]
+        A2["Flight Selection Agent<br/>output: DecisionFlights"]
+    end
+
+    LLM["OpenRouter LLM"]
+    OBS["Langfuse / OpenTelemetry<br/>+ JSON metrics"]
+
+    U --> API --> ORCH
     ORCH <--> REDIS
-    ORCH --> CONV
-    CONV --> AGENT --> LLM
-    CONV --> AIRPORT --> DB
-    ORCH --> SEL
-    SEL --> FSO --> APIFY
-    SEL --> PICK --> LLM
+    ORCH --> CS
+    CS --> A1 --> LLM
+    CS --> AIR --> DB
+    ORCH --> FSO --> APIFY
+    FSO --> A2 --> LLM
     API -.-> OBS
     ORCH -.-> OBS
-    CONV -.-> OBS
+    CS -.-> OBS
     FSO -.-> OBS
 ```
 
-**Layer responsibilities**
+---
 
-| Layer | Responsibility |
-|-------|----------------|
-| `app/router` | HTTP transport only: conversation id header, root trace span, delegation to the orchestrator. Status codes are produced by registered exception handlers. |
-| `app/service/orchestrator.py` | Owns one conversation turn: load or create state, append history, run the conversation service, persist state, then run the flight search when the request is complete. |
-| `app/service/conversation_service` | Domain flow: agent extraction, patch merging, completeness check, airport resolution, clarification handling. |
-| `app/agent` | Agent construction (`create_flight_agent`, `create_flights_agent_selection`), Jinja2 prompt rendering, retry wrapper and application bootstrap. |
-| `app/tools` | External provider boundary: Apify flight search and airline review scraping, plus the orchestration that combines them. |
-| `app/repositories` | Data access: Redis conversation state and SQLite airport lookups. |
-| `app/schema`, `app/exception` | Typed Pydantic contracts and the flight-domain exception hierarchy with its user-facing translator. |
-| `app/handlers` | Exception-to-HTTP mapping returning a uniform `ErrorResponse` body. |
+## The Two Agents
+
+| | **Conversation / Extraction Agent** (`FlightAgent`) | **Flight Selection Agent** (`FlightAgentSelection`) |
+|---|---|---|
+| **Job** | Talk to the user and fill the slots | Rank real flight offers |
+| **Input** | User message + last 8 history messages + current date | Serialized `FlightSearchResponse` (offers + airline review summaries) |
+| **Output type** | `FlightAgentResponse` — `type`, `patch` (changed fields only), optional `reply` | `DecisionFlights` — up to 2 `selected_indexes` + `reasoning` |
+| **Prompt** | `prompt_agent_flights.jinja2`, rendered per turn with live context | `prompt_selection_flight.jinja2`, static |
+| **Tools** | None — resolution and search are the service layer's job | None — it only reasons over data it was given |
+| **Failure mode** | Empty/invalid patch → `FlightExtractionOutputError`, retried once | Invalid or out-of-range indexes → rejected by the Pydantic validator |
+
+Keeping the agents tool-free is deliberate: the model decides *what the user meant* and *which offer is better*, while the application decides *when* to hit Redis, SQLite and Apify. That boundary is what makes the flow unit-testable.
 
 ---
 
-## Request Flow
+## Request Lifecycle
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant API as FastAPI /flight/search
-    participant O as FlightOrchestrator
-    participant R as Redis
-    participant C as ConversationService
-    participant A as Extraction agent
-    participant DB as Airport DB
-    participant AP as Apify
-    participant S as Selection agent
+1. `POST /flight/search` reads `X-Conversation-ID` (or generates one), returns it with the response, and opens the Langfuse root span.
+2. `FlightOrchestrator` loads the conversation state from Redis (or creates one) and appends the user message to the history.
+3. `FlightConversationService` either interprets the message as an answer to a pending clarification, or runs the extraction agent and merges the returned `patch` into the state.
+4. While `origin`, `destination` or `departure_date` are missing, the turn ends — with the agent's own `reply` when it has one, otherwise with a deterministic clarification question.
+5. Once complete, both cities are resolved to IATA codes. An unknown or ambiguous city becomes a clarification (with selectable airport options), not an error.
+6. The resolved request goes to the Apify flight actor, airlines are enriched with Skytrax review summaries, and the Flight Selection Agent returns its picks and reasoning.
+7. State is persisted on every turn and the conversation key is deleted after a successful search.
 
-    U->>API: message + X-Conversation-ID
-    API->>O: handle_chat_request
-    O->>R: get(conversation_id)
-    O->>C: process_chat_request(state)
-    C->>A: extract patch + reply
-    A-->>C: FlightAgentResponse
-    C->>C: merge patch, check required fields
-    alt fields missing
-        C-->>O: Clarification / Conversation response
-    else complete
-        C->>DB: resolve origin & destination
-        DB-->>C: IATA codes or ambiguity
-        C-->>O: FlightSearchRequest
-    end
-    O->>R: save(updated state)
-    O->>AP: search flights + airline reviews
-    AP-->>O: offers + review summaries
-    O->>S: rank offers
-    S-->>O: DecisionFlights (indexes + reasoning)
-    O->>R: delete(conversation_id)
-    O-->>API: ResponseFlights
-    API-->>U: JSON response
-```
+**Layers**
 
-1. The endpoint reads `X-Conversation-ID` (or generates one), echoes it back, and opens the root Langfuse span.
-2. `FlightOrchestrator` loads the conversation state from Redis, or creates a new one, and records the user message in the history.
-3. `FlightConversationService` either interprets the message as an answer to a pending clarification, or runs the extraction flow: the agent returns a `patch` plus an optional conversational `reply`, which is merged into the state.
-4. If `origin`, `destination` or `departure_date` are still missing, the turn ends with the agent's own reply, or with a deterministic clarification question stored as a `pending_clarification`.
-5. When the request is complete, both locations are resolved to IATA codes; an unknown or ambiguous city produces a clarification (with airport options) instead of an error.
-6. The resolved request is sent to the Apify flight actor, airline names are enriched with Skytrax review summaries, and the selection agent picks two flights with reasoning.
-7. The state is saved on every turn and deleted once a search has completed successfully.
+| Layer | Responsibility |
+|-------|----------------|
+| `app/router` | HTTP transport: conversation id header, root trace span, delegation. |
+| `app/service/orchestrator.py` | One conversation turn: load state, run the service, persist, then search. |
+| `app/service/conversation_service` | Extraction, state merging, completeness check, airport resolution. |
+| `app/agent` | Agent definitions, prompt rendering, retry wrapper, startup bootstrap. |
+| `app/tools` | Apify clients for flights and airline reviews. |
+| `app/repositories` | Redis conversation state and SQLite airport lookups. |
+| `app/schema`, `app/exception` | Pydantic contracts and the domain exception hierarchy. |
+| `app/handlers` | Exception-to-HTTP mapping with a uniform `ErrorResponse` body. |
 
 ---
 
@@ -180,59 +162,61 @@ docker-compose.yml            Local Redis
 
 ---
 
-## Conversation Management
+## Conversation State
 
-- **Conversation id** — sent by the client through the `X-Conversation-ID` header; the API generates a UUID when it is absent and always returns it in the response. The web UI generates the id itself so a thread survives a failed first turn.
-- **Redis state** — `FlightConversationState` (collected fields, resolved IATA codes, status, version, timestamps, pending clarification, message history) is serialized as JSON under `flight:conversation:{id}` with the TTL from `REDIS_CONVERSATION_TTL_SECONDS`.
-- **State merging** — the agent returns only what the current message changed. `FlightStateMerger` merges that patch immutably (`model_copy`), normalizes city names, bumps the version and refreshes `updated_at`. Changing a city clears its previously resolved airport code.
-- **Incomplete requests** — `FlightRequestCompletenessChecker` treats `origin`, `destination` and `departure_date` as required (`return_date` is optional). While fields are missing, the turn ends with either the agent's conversational reply or a canned clarification question.
-- **Clarification flow** — a clarification stores a `PendingClarification` (reason, target field, allowed airport codes). On the next turn, `missing_field` and `airport_not_found` answers re-enter the extraction flow, while `ambiguous_airport` answers are matched against the allowed codes and applied directly; an invalid choice re-asks without losing the pending state.
-- **Transition to search** — once the state is complete and both airports resolve to a single code, the status becomes `READY` and the orchestrator runs the flight search. After a successful search the conversation key is deleted.
-- **History** — user messages, clarification questions and agent replies are appended to the state history, and the last eight messages are injected into the extraction prompt as the agent's memory.
+- The conversation id comes from the `X-Conversation-ID` header; the API generates one when it is missing and always returns it. The web UI generates its own so a thread survives a failed first turn.
+- `FlightConversationState` (collected fields, IATA codes, status, version, pending clarification, history) is stored as JSON in Redis under `flight:conversation:{id}` with the TTL from `REDIS_CONVERSATION_TTL_SECONDS`.
+- Merging normalizes city names and clears a resolved airport code whenever its city changes, so a correction can never leave a stale IATA code behind.
+- A clarification stores its reason, target field and allowed airport codes. Answers to `missing_field` and `airport_not_found` re-enter the extraction flow; `ambiguous_airport` answers are matched against the allowed codes, and an invalid choice simply re-asks.
+- The last eight history messages are injected into the extraction prompt as the agent's only memory. The conversation key is deleted after a successful search.
 
 ---
 
-## Reliability and Error Handling
+## Error Handling
 
-- **Domain exception hierarchy** (`app/exception/flight_exceptions.py`): `FlightError` → `UserCorrectableFlightError` (`AirportNotFoundError`, `AmbiguityAirportError`, `EmptyFlightSearch`, `FlightExtractionOutputError`, validation errors) and `ProviderError` (flight and airline-review provider failures, including timeouts).
-- **User-correctable errors** are translated into human-readable messages and turned into structured clarification responses instead of HTTP errors, so the conversation can continue.
-- **Provider failures** from Apify are wrapped at the client boundary: timeouts, empty datasets and unexpected exceptions become typed provider errors carrying the provider name and context. Airline review fetching is best-effort — a failure for one airline is logged and skipped rather than failing the search.
-- **Retry logic** — `run_agent_with_retry` retries the agent run when the model returns structurally invalid output (`ModelBehaviorError`), and records the retry count in the call metrics. The OpenAI client itself is configured with a request timeout and `max_retries`.
-- **Validation** — Pydantic models enforce the API contract: departure dates cannot be in the past, a return date cannot precede departure, origin and destination cannot be identical, IATA codes are normalized to three letters, and the selection agent cannot return duplicate or out-of-range flight indexes.
-- **HTTP mapping** — `register_exception_handlers` maps exceptions to status codes on the exception MRO: `EmptyFlightSearch` → 404, other user-correctable errors → 400, provider timeouts → 504, provider errors → 502, other domain errors → 500, conversation storage failures → 503, anything else → 500. Provider responses are replaced by generic messages so actor ids, dataset ids and upstream errors stay in the logs.
-- **Startup safety** — if any client fails to initialize, the bootstrap runs its shutdown path and the application fails to start rather than serving a half-initialized app. An incomplete Langfuse configuration only disables tracing.
+- Domain exceptions live in `app/exception/flight_exceptions.py`, split between `UserCorrectableFlightError` (unknown or ambiguous airport, empty results, invalid agent output) and `ProviderError` (Apify failures and timeouts).
+- User-correctable errors become clarification responses so the conversation can continue instead of failing.
+- Apify failures are wrapped at the client boundary. Airline review fetching is best-effort: one failing airline is logged and skipped.
+- `run_agent_with_retry` retries the agent when the model returns structurally invalid output.
+- Pydantic validates the contract: no past departure dates, no return before departure, no identical origin and destination, normalized IATA codes.
+- `register_exception_handlers` maps exceptions to status codes: empty search → 404, user-correctable → 400, provider timeout → 504, provider error → 502, storage failure → 503, anything else → 500. Provider messages are replaced by generic ones so internal ids stay in the logs.
 
 ---
 
 ## Observability
 
-- **Tracing** — `OpenAIAgentsInstrumentor` instruments the OpenAI Agents SDK at startup, so every agent run, generation and handoff is captured as OpenTelemetry spans exported to Langfuse.
-- **Root span** — the `/flight/search` endpoint opens a `flight-chat-response` span with the user message as input and the final response as output, and propagates the conversation id as the Langfuse `session_id` plus a `flight-search` tag, so all turns of a conversation group together.
-- **Nested spans** — explicit observations are created for the orchestration steps (`handle_flight_request`, `run_flight_selection`), the extraction flow (`flight_request_extraction`, `agent_run`), the search chain (`search_flight`, `search_flights`, `run_agent_selection`) and the external tool calls (`apify_search_flights`, `apify_get_airline_summaries`).
-- **LLM metrics** — `LLMCallMetrics` records conversation id, agent name, model, latency in milliseconds, success flag, retry count, input/output/total token usage and error type. Token counts are collected through the Agents SDK run hooks (`on_llm_end`).
-- **Structured logging** — metrics and application logs are emitted as JSON (`python-json-logger`) with event names and contextual fields, which makes them queryable in the hosting platform's log viewer.
-- **Error signalling** — failures update the active span with an `ERROR` level and a status message before the exception propagates to the HTTP handlers.
+- `OpenAIAgentsInstrumentor` captures every agent run as OpenTelemetry spans exported to Langfuse.
+- `/flight/search` opens a `flight-chat-response` root span with the user message as input and the response as output, using the conversation id as the Langfuse `session_id` so all turns of a conversation group together.
+- Nested spans cover orchestration, extraction, the search chain and the Apify calls.
+- `LLMCallMetrics` records conversation id, agent name, model, latency, success flag, retry count, input/output/total tokens and error type; token counts come from the Agents SDK run hooks. Metrics and application logs are emitted as JSON.
+- An incomplete Langfuse configuration only disables tracing — it does not break the request path.
+
+---
+
+## Evaluation
+
+The traces and metrics above provide the raw signal; a systematic evaluation harness is **not implemented yet**. This is how the system is intended to be measured.
+
+| Metric | What it measures | Status |
+|--------|------------------|--------|
+| **Extraction accuracy** | Per-field precision/recall of `origin`, `destination`, `departure_date`, `return_date` against a labelled set of utterances, including corrections ("actually, leave from Lyon"). | Planned — needs a labelled dataset |
+| **Clarification accuracy** | How often a clarification is asked when a field is genuinely missing or ambiguous, versus asked needlessly or skipped. | Planned |
+| **Task completion rate** | Share of conversations reaching a successful search, and the number of turns it took. | Planned — derivable from Langfuse sessions |
+| **Selection quality** | Whether `DecisionFlights.reasoning` is consistent with the offers it cites (price, duration, layovers, reviews) — LLM-as-judge or human review. | Planned |
+| **Latency p50/p95** | Per-agent call and per-turn end to end. | Partially available — `LLMCallMetrics.latency_ms` is logged per call; percentiles are not aggregated |
+| **Token usage / cost** | Input, output and total tokens per turn and per conversation. | Available — logged per call and visible in Langfuse |
+| **Retry rate** | Frequency of `ModelBehaviorError` retries, as a proxy for prompt/schema drift. | Available — `retry_count` is logged per call |
+| **Provider error rate** | Apify failures, timeouts and empty result sets. | Available — typed exceptions and JSON logs |
+
+The first step towards the planned items is a fixture set of conversations replayed against stubbed Apify and LLM providers, which is also listed under Future Improvements.
 
 ---
 
 ## CI/CD
 
-```mermaid
-flowchart LR
-    A[Feature branch] --> B[Push / Pull request to main]
-    B --> C[GitHub Actions: CI]
-    C --> D[uv sync --locked]
-    D --> E[ruff check .]
-    E --> F[mypy app]
-    F --> G["pytest --cov=app --cov-fail-under=80"]
-    G --> H[main]
-    H --> I[Render build and deploy]
-    I --> J[Production]
-```
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and pull request to `main`: `uv sync --locked`, `ruff check .`, `mypy app`, then `pytest` with an 80% coverage gate. Tests use placeholder environment variables, so no secrets are needed.
 
-The workflow in [.github/workflows/ci.yml](.github/workflows/ci.yml) runs on every push and pull request targeting `main`. It installs Python 3.14 with `uv`, restores the locked dependency set, then runs Ruff, mypy and the test suite with coverage, failing the build below 80% coverage. Tests run against placeholder environment variables, so no secrets are required in CI.
-
-Deployment to Render is configured on the Render side; there is no `render.yaml` or `Procfile` committed to the repository.
+Render builds and deploys `main`; the deployment settings live on Render, not in the repository.
 
 ---
 
@@ -326,37 +310,22 @@ The suite currently contains 196 tests covering the orchestrator, conversation s
 
 ## Deployment
 
-The application is deployed on Render as a web service.
+The application runs on Render as a single web service serving both the API and the chat UI: **https://ai-travel-agent-gvce.onrender.com**
 
-**Live application: https://ai-travel-agent-gvce.onrender.com**
-
-```mermaid
-flowchart TD
-    NET[Internet] --> RENDER[Render web service]
-    RENDER --> APP["FastAPI + Uvicorn<br/>static chat UI"]
-    APP --> REDIS[(Redis)]
-    APP --> LLM[OpenRouter LLM]
-    APP --> APIFY[Apify actors]
-    APP --> LF[Langfuse]
-    APP --> DB[(SQLite airports.db<br/>bundled in the image)]
-```
-
-Configuration is supplied entirely through environment variables; no deployment settings are committed to the repository. The airport database is read-only reference data shipped with the application, while all mutable conversation state lives in Redis.
+Configuration is supplied entirely through environment variables. The airport database is read-only reference data shipped inside the image; all mutable conversation state lives in Redis.
 
 ---
 
-## Engineering Highlights
+## Engineering Decisions
 
-- **Layered architecture** with explicit boundaries: transport (router) → orchestration → domain services → repositories/provider clients, each independently testable.
-- **Dependency injection throughout** — FastAPI `Annotated[..., Depends(...)]` aliases wire the full object graph from the Apify client down to the orchestrator; services accept injectable factories instead of constructing their own collaborators.
-- **Fully asynchronous I/O** — Redis, SQLAlchemy (`aiosqlite`), Apify and the LLM client are all async.
-- **Typed domain models** — Pydantic models describe conversation state, agent output, provider payloads and the discriminated response union returned to clients; mypy runs over the whole application in CI.
-- **Structured agent output** — both agents use the Agents SDK `output_type` contract (`FlightAgentResponse`, `DecisionFlights`) rather than free-text parsing, with validation enforced at the schema level.
-- **Immutable state management** — conversation state is only ever updated through `model_copy`, with an explicit version counter, avoiding shared-mutation bugs across turns.
-- **Error taxonomy as a design tool** — the distinction between user-correctable errors and provider failures drives both the conversation flow and the HTTP status mapping.
-- **Observability built in** — tracing, token accounting and structured metrics are part of the request path, not an afterthought.
-- **Automated quality gates** — lint, static typing and a coverage-gated test suite run on every push and pull request.
-- **Containerized and cloud-deployed** — a single image runs the API and the web interface, with configuration fully externalized.
+- **Two agents instead of one** — dialogue management and ranking have different inputs, different output schemas and different failure modes. Splitting them keeps each prompt small, makes the extraction step cheap to retry, and means a bad ranking never corrupts the conversation state.
+- **Agents have no tools** — airport lookup and Apify calls are ordinary service calls behind the agents. The model cannot skip, duplicate or hallucinate a data fetch, and every external call is directly unit-testable. (The Agents SDK also swallows tool exceptions into strings by default, which would have hidden real provider errors from the HTTP layer.)
+- **Structured `output_type` over free-text parsing** — schema violations surface as a typed error that can be retried, instead of silently producing a malformed state.
+- **Patch-based state updates** — the agent returns only what the current message changed, so an unrelated field can never be overwritten by a partially-attentive model. Merges are immutable (`model_copy`) with a version counter, so no turn mutates state another turn is reading.
+- **Redis for conversation state, SQLite for airports** — conversation state is mutable, per-user and short-lived (TTL), so it belongs in a cache; the airport table is read-only reference data, so it ships in the image with no infrastructure cost.
+- **Clarifications derived from typed errors** — "unknown city" and "ambiguous city" are raised as `UserCorrectableFlightError` subclasses and translated once into clarification responses, so the same condition drives both the conversation flow and the HTTP status mapping without duplicated logic.
+- **Dependency injection via FastAPI `Annotated[..., Depends(...)]`** — the whole object graph is wired at the edge, so services take injectable collaborators and factories rather than constructing their own, which is what makes the 196 unit tests possible without live providers.
+- **Fully async I/O** — Redis, SQLAlchemy (`aiosqlite`), Apify and the LLM client are all async, so a turn blocked on a slow scraper does not block the event loop.
 
 ---
 
